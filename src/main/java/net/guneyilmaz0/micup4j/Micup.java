@@ -23,6 +23,7 @@ public final class Micup implements AutoCloseable {
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).followRedirects(HttpClient.Redirect.NEVER).build();
     private final RestClient rest;
+    private final EntityCache entityCache;
     private final CopyOnWriteArrayList<EventListener> listeners;
     private final ThreadPoolExecutor events;
     private final Consumer<Throwable> errorHandler;
@@ -41,8 +42,9 @@ public final class Micup implements AutoCloseable {
     private volatile boolean closed;
     private final CompletableFuture<HttpResponse<String>> discovery;
 
-    Micup(String token, URI origin, List<EventListener> listeners, List<String> ignored, int restCapacity, int eventCapacity, int shardId, int shardCount, Consumer<Throwable> handler, RestConfig restConfig, GatewayConfig gatewayConfig) {
+    Micup(String token, URI origin, List<EventListener> listeners, List<String> ignored, int restCapacity, int eventCapacity, int shardId, int shardCount, Consumer<Throwable> handler, RestConfig restConfig, GatewayConfig gatewayConfig, CachePolicy cachePolicy) {
         this.listeners = new CopyOnWriteArrayList<>(listeners);
+        entityCache = new EntityCache(cachePolicy);
         errorHandler = handler;
         this.eventCapacity = eventCapacity;
         events = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(eventCapacity),
@@ -139,6 +141,116 @@ public final class Micup implements AutoCloseable {
         return rest.request("GET", "/users/" + Json.id(id), null).map(User::fromJson);
     }
 
+    /** Cached snapshot only; absence means uncached, not necessarily inaccessible or nonexistent. */
+    public Optional<Guild> getGuildById(String id) { return entityCache.getGuild(Json.id(id)); }
+
+    public List<Guild> getGuilds() { return entityCache.getGuilds(); }
+
+    /** HTTP reads return detached snapshots and never race Gateway updates into the cache. */
+    public RestAction<Guild> retrieveGuildById(String id) {
+        return rest.request("GET", "/guilds/" + Json.id(id), null).map(Guild::fromJson);
+    }
+
+    public RestAction<List<Role>> retrieveRoles(String guildId) {
+        String id = Json.id(guildId);
+        return rest.request("GET", "/guilds/" + id + "/roles", null)
+                .map(data -> readList(data, Integer.MAX_VALUE, value -> Role.fromJson(id, value)));
+    }
+
+    public RestAction<List<GuildChannel>> retrieveGuildChannels(String guildId) {
+        String id = Json.id(guildId);
+        return rest.request("GET", "/guilds/" + id + "/channels", null)
+                .map(data -> readList(data, Integer.MAX_VALUE, value -> GuildChannel.fromJson(id, value)));
+    }
+
+    public RestAction<GuildChannel> retrieveGuildChannelById(String channelId) {
+        return rest.request("GET", "/channels/" + Json.id(channelId), null)
+                .map(data -> GuildChannel.fromJson(data.path("guild_id").asText(), data));
+    }
+
+    public RestAction<Member> retrieveMemberById(String guildId, String userId) {
+        String id = Json.id(guildId);
+        return rest.request("GET", "/guilds/" + id + "/members/" + Json.id(userId), null)
+                .map(data -> Member.fromJson(id, data));
+    }
+
+    public RestAction<Member> retrieveSelfMember(String guildId) {
+        String id = Json.id(guildId);
+        return rest.request("GET", "/guilds/" + id + "/members/@me", null).map(data -> Member.fromJson(id, data));
+    }
+
+    /** One bounded page in ascending user-ID order. Pass the final returned ID as the next exclusive cursor. */
+    public RestAction<List<Member>> retrieveMembers(String guildId, int limit, String after) {
+        String id = Json.id(guildId);
+        if (limit < 1 || limit > 1000) throw new IllegalArgumentException("Member page limit must be 1-1000");
+        String cursor = after == null ? "" : "&after=" + Json.id(after);
+        return rest.request("GET", "/guilds/" + id + "/members?limit=" + limit + cursor, null).map(data -> {
+            List<Member> members = readList(data, limit, value -> Member.fromJson(id, value));
+            java.math.BigInteger previous = after == null ? java.math.BigInteger.ZERO : new java.math.BigInteger(after);
+            for (Member member : members) {
+                var next = new java.math.BigInteger(member.getId());
+                if (next.compareTo(previous) <= 0) throw new IllegalStateException("Member page did not advance its cursor");
+                previous = next;
+            }
+            return members;
+        });
+    }
+
+    public RestAction<Guild> modifyGuildName(String guildId, String name) {
+        return rest.request("PATCH", "/guilds/" + Json.id(guildId), Json.object().put("name", boundedName(name, 100)))
+                .map(Guild::fromJson);
+    }
+
+    /** Null clears the nickname. The server enforces hierarchy and permissions. */
+    public RestAction<Member> modifyMemberNickname(String guildId, String userId, String nickname) {
+        String id = Json.id(guildId);
+        if (nickname != null) boundedName(nickname, 32);
+        return rest.request("PATCH", "/guilds/" + id + "/members/" + Json.id(userId), Json.object().put("nick", nickname))
+                .map(data -> Member.fromJson(id, data));
+    }
+
+    public RestAction<Void> addMemberRole(String guildId, String userId, String roleId) {
+        return memberRole("PUT", guildId, userId, roleId);
+    }
+
+    public RestAction<Void> removeMemberRole(String guildId, String userId, String roleId) {
+        return memberRole("DELETE", guildId, userId, roleId);
+    }
+
+    private RestAction<Void> memberRole(String method, String guildId, String userId, String roleId) {
+        return rest.request(method, "/guilds/" + Json.id(guildId) + "/members/" + Json.id(userId) + "/roles/" + Json.id(roleId), null)
+                .map(value -> null);
+    }
+
+    /** Omit permissions with null to inherit the everyone mask; feature-gated bits follow server defaults. */
+    public RestAction<Role> createRole(String guildId, String name, int color,
+                                      net.guneyilmaz0.micup4j.permissions.PermissionSet permissions) {
+        String id = Json.id(guildId);
+        if (color < 0 || color > 0xFFFFFF) throw new IllegalArgumentException("Color must be a 24-bit RGB value");
+        var body = Json.object().put("name", boundedName(name, 100)).put("color", color);
+        if (permissions != null) body.put("permissions", permissions.toRequestValue());
+        return rest.request("POST", "/guilds/" + id + "/roles", body).map(data -> Role.fromJson(id, data));
+    }
+
+    public RestAction<Role> modifyRoleName(String guildId, String roleId, String name) {
+        String id = Json.id(guildId);
+        return rest.request("PATCH", "/guilds/" + id + "/roles/" + Json.id(roleId), Json.object().put("name", boundedName(name, 100)))
+                .map(data -> Role.fromJson(id, data));
+    }
+
+    private static String boundedName(String value, int maximum) {
+        if (value == null || value.isEmpty() || value.codePointCount(0, value.length()) > maximum)
+            throw new IllegalArgumentException("Name is outside its character limit");
+        return value;
+    }
+
+    private static <T> List<T> readList(JsonNode data, int maximum, java.util.function.Function<JsonNode, T> parser) {
+        if (!data.isArray() || data.size() > maximum) throw new IllegalStateException("Invalid entity collection response");
+        var result = new ArrayList<T>();
+        for (JsonNode entry : data) result.add(parser.apply(entry));
+        return List.copyOf(result);
+    }
+
     /**
      * Replaces all commands in the given guild. Call only when command definitions change.
      */
@@ -208,6 +320,15 @@ public final class Micup implements AutoCloseable {
         try {
             events.execute(() -> {
                 lastEventQueueDelay = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt);
+                try {
+                    synchronized (lifecycle) {
+                        if (closed) { completion.completeExceptionally(new IllegalStateException("Client closed")); return; }
+                        if (status != Status.FAILED && entityCache.accepts(event.getType())) entityCache.apply(event.getType(), event.getData());
+                    }
+                } catch (RuntimeException invalid) {
+                    completion.completeExceptionally(new IllegalStateException("Invalid entity event: " + event.getType()));
+                    return;
+                }
                 for (EventListener listener : listeners) {
                     try { listener.onEvent(event); }
                     catch (Throwable error) {
@@ -238,6 +359,7 @@ public final class Micup implements AutoCloseable {
             if (gateway != null) gateway.close();
             rest.close();
             events.shutdown();
+            entityCache.clear();
             http.shutdown();
             terminated.completeExceptionally(error);
         }
@@ -259,6 +381,7 @@ public final class Micup implements AutoCloseable {
             if (gateway != null) gateway.close();
             rest.close();
             events.shutdownNow();
+            entityCache.clear();
             pendingEvents.forEach(event -> event.completeExceptionally(new IllegalStateException("Client closed")));
             http.shutdownNow();
             terminated.complete(null);

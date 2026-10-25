@@ -2,7 +2,9 @@ package net.guneyilmaz0.micup4j;
 
 import net.guneyilmaz0.micup4j.hooks.EventListener;
 import net.guneyilmaz0.micup4j.internal.RestClient;
+import net.guneyilmaz0.micup4j.internal.EntityCache;
 import net.guneyilmaz0.micup4j.config.RestConfig;
+import net.guneyilmaz0.micup4j.config.CachePolicy;
 import net.guneyilmaz0.micup4j.config.GatewayConfig;
 import java.net.URI;
 import java.util.*;
@@ -11,6 +13,7 @@ import java.util.function.Consumer;
 /** JDA-style builder for a single Micup Gateway session. */
 public final class MicupBuilder {
     private final String token;
+    private CachePolicy cachePolicy = CachePolicy.defaults();
     private RestConfig restConfig = RestConfig.defaults();
     private GatewayConfig gatewayConfig = GatewayConfig.defaults();
     private URI origin = URI.create("https://micup.gg");
@@ -32,10 +35,10 @@ public final class MicupBuilder {
     }
 
     /**
-     * Currently identical to default: no persistent entity cache.
+     * Creates a session without persistent guild, role, channel or member caches.
      */
     public static MicupBuilder createLight(String token) {
-        return new MicupBuilder(token);
+        return new MicupBuilder(token).setCachePolicy(CachePolicy.light());
     }
 
     public MicupBuilder setInstanceOrigin(URI origin) {
@@ -87,7 +90,13 @@ public final class MicupBuilder {
         gatewayConfig = Objects.requireNonNull(config); return this;
     }
 
+    public MicupBuilder setCachePolicy(CachePolicy policy) {
+        cachePolicy = Objects.requireNonNull(policy); return this;
+    }
+
     public Micup build() {
-        return new Micup(token, origin, List.copyOf(listeners), ignoredEvents, restCapacity, eventCapacity, shardId, shardCount, errorHandler, restConfig, gatewayConfig);
+        if (cachePolicy.maxGuilds() > 0 && ignoredEvents.stream().anyMatch(EntityCache::isEntityEvent))
+            throw new IllegalStateException("Entity cache requires its Gateway update events; disable the cache to ignore them");
+        return new Micup(token, origin, List.copyOf(listeners), ignoredEvents, restCapacity, eventCapacity, shardId, shardCount, errorHandler, restConfig, gatewayConfig, cachePolicy);
     }
 }

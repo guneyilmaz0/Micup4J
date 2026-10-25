@@ -186,7 +186,7 @@ public final class GatewayClient implements AutoCloseable {
             if (failure == null) sequence = Math.max(sequence, seq);
             else {
                 // Queue overflow cannot be acknowledged. Stop to avoid silently skipping events.
-                fail(new IllegalStateException("Event queue exhausted; increase capacity or shorten listener work"));
+                fail(new IllegalStateException("Event delivery failed; check entity payloads, queue capacity and listener duration"));
             }
         }));
     }

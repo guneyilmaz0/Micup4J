@@ -366,4 +366,118 @@ class GatewayTest {
         assertEquals("Avatar", callback.path("data").path("embeds").get(0).path("title").asText());
     }
 
+    @Test void entityCacheIsUpdatedBeforeListenersAndClearedOnClose() throws Exception {
+        var observed = new CompletableFuture<net.guneyilmaz0.micup4j.entities.Guild>();
+        start(new ListenerAdapter() {
+            @Override public void onGenericEvent(GenericEvent event) {
+                if (event.getType().equals("GUILD_CREATE")) observed.complete(event.getMicup().getGuildById("1").orElseThrow());
+            }
+        });
+        var envelope = Json.object().put("op", 0).put("t", "GUILD_CREATE").put("s", 2);
+        envelope.set("d", EntityCacheTest.snapshot());
+        sockets.poll(2, TimeUnit.SECONDS).send(envelope.toString());
+        assertEquals("Guild", observed.get(3, TimeUnit.SECONDS).name());
+        assertEquals(2, client.getGuildById("1").orElseThrow().roles().size());
+        client.close(); assertTrue(client.getGuilds().isEmpty());
+    }
+
+    @Test void lightPresetDeliversRawEventsWithoutCachingEntities() throws Exception {
+        var delivered = new CompletableFuture<Void>();
+        client = MicupBuilder.createLight("test-token").setInstanceOrigin(server.url("/").uri())
+                .setIgnoredEvents("GUILD_ROLE_UPDATE").setErrorHandler(errors::add).addEventListeners(new ListenerAdapter() {
+                    @Override public void onGenericEvent(GenericEvent event) {
+                        if (event.getType().equals("GUILD_CREATE")) delivered.complete(null);
+                    }
+                }).build();
+        client.awaitReady(Duration.ofSeconds(5));
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot()).get(3, TimeUnit.SECONDS);
+        delivered.get(3, TimeUnit.SECONDS); assertTrue(client.getGuilds().isEmpty());
+    }
+
+    void entityResponses(java.util.function.Function<RecordedRequest, String> responder) {
+        server.setDispatcher(new okhttp3.mockwebserver.Dispatcher() {
+            @Override public MockResponse dispatch(RecordedRequest request) {
+                String body = responder.apply(request);
+                return body == null ? new MockResponse().setResponseCode(204) : json(body);
+            }
+        });
+    }
+
+    @Test void typedEntityReadsUsePublicApiAndBoundedExclusiveMemberPages() throws Exception {
+        start(new ListenerAdapter() {});
+        entityResponses(request -> {
+            String path = request.getPath();
+            if (path.contains("/members?")) return "[" + EntityCacheTest.member("5") + "," + EntityCacheTest.member("6") + "]";
+            if (path.contains("/members/")) return EntityCacheTest.member("4");
+            if (path.endsWith("/roles")) return "[" + EntityCacheTest.role("1", 0) + "]";
+            if (path.contains("/channels")) return path.endsWith("/channels") ? EntityCacheTest.snapshot().path("channels").toString()
+                    : "{\"id\":\"8\",\"guild_id\":\"1\",\"type\":2,\"name\":\"voice\",\"permission_overwrites\":[]}";
+            return EntityCacheTest.snapshot().toString();
+        });
+        assertEquals("Guild", client.retrieveGuildById("1").submit().get(3, TimeUnit.SECONDS).name());
+        var request = route("/guilds/1"); assertEquals("Bot test-token", request.getHeader("Authorization"));
+        assertEquals("/public/v1/guilds/1", request.getPath());
+        assertEquals("1", client.retrieveRoles("1").submit().get(3, TimeUnit.SECONDS).getFirst().id());
+        route("/roles");
+        assertEquals("8", client.retrieveGuildChannels("1").submit().get(3, TimeUnit.SECONDS).getFirst().id()); route("/channels");
+        assertEquals(net.guneyilmaz0.micup4j.entities.ChannelType.VOICE,
+                client.retrieveGuildChannelById("8").submit().get(3, TimeUnit.SECONDS).getType()); route("/channels/8");
+        assertEquals("4", client.retrieveMemberById("1", "4").submit().get(3, TimeUnit.SECONDS).getId()); route("/members/4");
+        client.retrieveSelfMember("1").submit().get(3, TimeUnit.SECONDS); route("/members/@me");
+        var page = client.retrieveMembers("1", 2, "4").submit().get(3, TimeUnit.SECONDS);
+        assertEquals(List.of("5", "6"), page.stream().map(net.guneyilmaz0.micup4j.entities.Member::getId).toList());
+        assertEquals("/public/v1/guilds/1/members?limit=2&after=4", route("/members?limit=2&after=4").getPath());
+        assertThrows(UnsupportedOperationException.class, page::clear);
+        assertTrue(client.getGuilds().isEmpty(), "HTTP reads must not populate Gateway state");
+    }
+
+    @Test void entityMutationsSerializeValidatedPayloadsAndLeaveCacheGatewayOwned() throws Exception {
+        start(new ListenerAdapter() {});
+        entityResponses(request -> {
+            if (request.getPath().contains("/members/4/roles/")) return null;
+            if (request.getPath().contains("/members/")) return EntityCacheTest.member("4");
+            if (request.getPath().contains("/roles")) return EntityCacheTest.role("2", 1);
+            return EntityCacheTest.snapshot().toString();
+        });
+        client.modifyGuildName("1", "Renamed").submit().get(3, TimeUnit.SECONDS);
+        var request = route("/guilds/1"); assertEquals("PATCH", request.getMethod());
+        assertEquals("Renamed", Json.parse(request.getBody().readUtf8()).path("name").asText());
+        client.modifyMemberNickname("1", "4", null).submit().get(3, TimeUnit.SECONDS);
+        assertTrue(Json.parse(route("/members/4").getBody().readUtf8()).get("nick").isNull());
+        client.addMemberRole("1", "4", "2").submit().get(3, TimeUnit.SECONDS);
+        assertEquals("PUT", route("/members/4/roles/2").getMethod());
+        client.removeMemberRole("1", "4", "2").submit().get(3, TimeUnit.SECONDS);
+        assertEquals("DELETE", route("/members/4/roles/2").getMethod());
+        client.createRole("1", "Helper", 0x3498DB, net.guneyilmaz0.micup4j.permissions.PermissionSet.of(
+                net.guneyilmaz0.micup4j.permissions.Permission.VIEW_CHANNEL)).submit().get(3, TimeUnit.SECONDS);
+        request = route("/roles"); assertEquals("POST", request.getMethod());
+        var body = Json.parse(request.getBody().readUtf8()); assertTrue(body.get("permissions").isTextual());
+        assertEquals("1024", body.path("permissions").asText());
+        client.modifyRoleName("1", "2", "Moderator").submit().get(3, TimeUnit.SECONDS);
+        assertEquals("PATCH", route("/roles/2").getMethod());
+        assertTrue(client.getGuilds().isEmpty());
+    }
+
+    @Test void memberPaginationRejectsInvalidLimitsOversizedOrNonadvancingResponses() throws Exception {
+        start(new ListenerAdapter() {});
+        assertThrows(IllegalArgumentException.class, () -> client.retrieveMembers("1", 0, null));
+        assertThrows(IllegalArgumentException.class, () -> client.retrieveMembers("1", 1001, null));
+        assertThrows(IllegalArgumentException.class, () -> client.retrieveMembers("1", 1, "../token"));
+        assertThrows(IllegalArgumentException.class, () -> client.createRole("1", "R", 0, net.guneyilmaz0.micup4j.permissions.PermissionSet.ALL));
+        entityResponses(request -> "[" + EntityCacheTest.member("4") + "]");
+        assertThrows(ExecutionException.class, () -> client.retrieveMembers("1", 1, "4").submit().get(3, TimeUnit.SECONDS));
+        entityResponses(request -> "[" + EntityCacheTest.member("5") + "," + EntityCacheTest.member("6") + "]");
+        assertThrows(ExecutionException.class, () -> client.retrieveMembers("1", 1, null).submit().get(3, TimeUnit.SECONDS));
+    }
+
+    @Test void malformedPermissionEventsFailAndClearCachedStateWithoutLeakingPayloads() throws Exception {
+        start(new ListenerAdapter() {});
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot()).get(3, TimeUnit.SECONDS);
+        assertFalse(client.getGuilds().isEmpty());
+        sockets.poll(2, TimeUnit.SECONDS).send("{\"op\":0,\"s\":2,\"t\":\"GUILD_ROLE_UPDATE\",\"d\":{\"guild_id\":\"1\",\"role\":{\"id\":\"2\",\"permissions\":\"private-payload-value\"}}}");
+        var error = assertThrows(ExecutionException.class, () -> client.termination().get(3, TimeUnit.SECONDS));
+        assertFalse(error.toString().contains("private-payload-value"));
+        assertEquals(Micup.Status.FAILED, client.getStatus()); assertTrue(client.getGuilds().isEmpty());
+    }
+
 }
