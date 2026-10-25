@@ -1,0 +1,1 @@
+rootProject.name = "Micup4J"
