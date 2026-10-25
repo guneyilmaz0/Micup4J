@@ -24,6 +24,11 @@ public final class MessageChannel {
                 .map(data -> new Message(client, data));
     }
 
+    public RestAction<Message> sendMessageEmbeds(MessageEmbed... embeds) {
+        return client.getRestClient().request("POST", "/channels/" + id + "/messages",
+                net.guneyilmaz0.micup4j.internal.MessagePayload.embeds(embeds)).map(data -> new Message(client, data));
+    }
+
     public RestAction<Message> retrieveMessageById(String messageId) {
         return client.getRestClient().request("GET", "/channels/" + id + "/messages/" + Json.id(messageId), null)
                 .map(data -> new Message(client, data));

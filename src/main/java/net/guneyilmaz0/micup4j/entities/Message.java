@@ -44,6 +44,13 @@ public final class Message {
                 .map(data -> new Message(client, data));
     }
 
+    public RestAction<Message> replyEmbeds(MessageEmbed... embeds) {
+        var body = net.guneyilmaz0.micup4j.internal.MessagePayload.embeds(embeds);
+        body.set("message_reference", Json.object().put("message_id", Json.id(id)));
+        return client.getRestClient().request("POST", "/channels/" + Json.id(channelId) + "/messages", body)
+                .map(data -> new Message(client, data));
+    }
+
     public RestAction<Message> editMessage(String content) {
         return client.getRestClient().request("PATCH", "/channels/" + Json.id(channelId) + "/messages/" + Json.id(id), Json.object().put("content", content))
                 .map(data -> new Message(client, data));
