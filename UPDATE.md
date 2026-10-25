@@ -4,61 +4,87 @@
 
 | Field | Value |
 | --- | --- |
-| Version | `0.1.0-alpha` |
-| Display name | Micup4J 0.1 Alpha |
-| Suggested Git tag | `v0.1.0-alpha` |
-| Release date | October 25, 2026 |
+| Version | `0.2.0-alpha` |
+| Display name | Micup4J 0.2 Alpha |
+| Suggested Git tag | `v0.2.0-alpha` |
+| Release date | October 26, 2026 |
 | Java baseline | Java 21 |
-| Dependency | `net.guneyilmaz0.micup4j:Micup4J:0.1.0-alpha` |
+| Dependency | `net.guneyilmaz0.micup4j:Micup4J:0.2.0-alpha` |
 | Status | Early alpha; not published to Maven Central |
 
-## Upgrading from the development snapshot
+## Upgrading from 0.1.0-alpha
 
-1. Change the dependency version from `0.1.0-SNAPSHOT` to `0.1.0-alpha`.
-2. If you use `includeBuild("../Micup4J")`, update the sibling checkout and rebuild the consuming bot.
-3. If you use Maven local, run `./gradlew publishToMavenLocal` before rebuilding the bot.
-4. Stop the running bot, replace its distribution, and start it again. Rebuilding files does not update a running JVM.
-5. Confirm that the bot reaches Ready and responds to a test command in your own server.
+1. Change the dependency version to `0.2.0-alpha` and recompile the consuming application.
+2. For a composite build, update the sibling Micup4J checkout. For Maven local, run `./gradlew publishToMavenLocal` in the library checkout.
+3. Review the scheduling and timeout changes below.
+4. Run the application's integration tests and rebuild its distribution.
+5. Restart the bot when you want to deploy the new library. Rebuilding files alone does not update a running JVM.
 
-No token rotation, application recreation, or command re-registration is required by the version change itself. The BMO dependency has been updated to the alpha coordinate. An already-running BMO process continues using the JARs loaded when it started.
+The BMO source dependency has been updated and its integration suite is used for compatibility verification. The release preparation itself does not restart the live bot or alter its credentials/commands. No token rotation is required by this upgrade.
 
-### Lifecycle improvement
+## Behavior changes
 
-Use `client.termination()` when an application needs to remain running until shutdown or failure:
+### REST scheduling
+
+Default HTTP attempt timeout remains 20 seconds. A new two-minute total timeout includes queue time, rate limit waits, and retries. Configure these limits with `RestConfig` before `build()`.
+
+Normal request capacity includes running and waiting requests. Initial interaction callbacks have eight additional reserved admission slots by default. With concurrency greater than one, one transport slot is reserved for those callbacks. All starts still obey the client's global pacing and server cooldowns.
+
+`submit().cancel(true)` now removes queued work and requests cancellation of active HTTP I/O. Cancellation propagates through `map()` and `flatMap()`. A server may already have applied an active write; cancellation does not undo it.
+
+`complete(Duration)` cancels its operation on a caller-side timeout. Interrupted blocking callers cancel the operation and retain the interrupt flag.
+
+See [REST.md](docs/REST.md) for exact defaults, retry limits, cache behavior, and cancellation semantics.
+
+### Interaction deadlines
+
+The first response has a local deadline 2.5 seconds after the interaction event object is created. Time waiting for a listener counts against it. A late submission fails locally instead of sending a request that has already exceeded this local budget.
+
+Use `deferReply(...)` immediately for slow operations, then edit the original response when work completes. Local priority cannot guarantee arrival within the server's three-second window.
+
+### New command and embed APIs
 
 ```java
-try (client) {
-    client.awaitReady();
-    client.termination().join();
-}
+var command = new SlashCommand("avatar", "Show an avatar")
+    .addOption(OptionType.USER, "user", "Choose a member", false);
+
+var embed = new EmbedBuilder().setTitle("Avatar")
+    .setImage("https://example.com/avatar.webp").build();
+event.replyEmbeds(true, embed).queue();
 ```
 
-Normal shutdown completes the future normally. A permanent failure completes it exceptionally. `ready()` and `awaitReady()` describe initial startup, not later connection health.
+Imports: `net.guneyilmaz0.micup4j.interactions.SlashCommand`, `net.guneyilmaz0.micup4j.interactions.OptionType`, and `net.guneyilmaz0.micup4j.entities.EmbedBuilder`.
+
+`SlashCommand` remains immutable. Its two-argument constructor and name/description accessors are retained; the definition now also has an option list. Retain the returned value when calling `addOption`.
+
+### Lifecycle diagnostics
+
+`ListenerAdapter` now offers `onStatusChange` and `onReconnect`. These local events use sequence `-1` and do not acknowledge Gateway data. Diagnostics are best effort; terminal state should be observed with `getStatus()` and `termination()`.
+
+See [GATEWAY.md](docs/GATEWAY.md) for connection timing and all documented close-code actions.
 
 ## Preparing the GitHub release
-
-From the repository root:
 
 ```bash
 ./gradlew clean build
 ```
 
-Upload the source repository with its Gradle wrapper, tests, example, and Markdown documentation. The `.gitignore` excludes local credentials, IDE state, logs, and build output. Keep the source repository independent of the sibling BMO project.
+Upload the source repository with the wrapper, tests, example, and documentation. Local credentials, IDE state, logs, and build output are excluded by `.gitignore`.
 
-When creating the release, use **Micup4J 0.1 Alpha** as the title, `v0.1.0-alpha` as the tag, and mark it as a **pre-release**. Use the `0.1.0-alpha` section in [CHANGELOG.md](CHANGELOG.md) as the release notes. Attach these build outputs:
+Create a **pre-release** titled **Micup4J 0.2 Alpha**, tagged `v0.2.0-alpha`. Paste the contents of [the release README](docs/releases/README-0.2.0-alpha.md) into the release description. Attach:
 
 ```text
-build/libs/Micup4J-0.1.0-alpha.jar
-build/libs/Micup4J-0.1.0-alpha-sources.jar
-build/libs/Micup4J-0.1.0-alpha-javadoc.jar
+build/libs/Micup4J-0.2.0-alpha.jar
+build/libs/Micup4J-0.2.0-alpha-sources.jar
+build/libs/Micup4J-0.2.0-alpha-javadoc.jar
 ```
 
-Choose and add a project license before a public release. No license choice or remote repository URL is assumed by this preparation.
+The CI workflow builds and tests; it does not automatically publish packages or create a release. A remote CI run can only be verified after upload. No Maven Central publication or license choice is implied by preparing these files.
 
-The CI workflow builds and tests the project; it does not publish packages or create a GitHub release automatically. Its remote run can only be verified after the repository is uploaded.
+## Versioning and history
 
-## Future releases
+`gradle.properties` remains the artifact version source. Runtime metadata and the JAR manifest are generated from it.
 
-`gradle.properties` is the source of the artifact version. Update it, add a dated changelog entry, document breaking changes and migration steps here, then run the build and consuming-bot integration tests. Runtime metadata and the JAR manifest are generated from the Gradle version.
-
-The roadmap records proposed milestones rather than promised dates. Publish a stable `1.0.0` only after the documented compatibility and reliability criteria have been met.
+- [0.1 Alpha release notes](docs/releases/README-0.1.0-alpha.md)
+- [Full changelog](CHANGELOG.md)
+- [Roadmap](ROADMAP.md)

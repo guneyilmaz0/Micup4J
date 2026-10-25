@@ -4,7 +4,7 @@
 
 Micup4J provides a familiar builder, event listener, and REST action API inspired by [JDA](https://github.com/discord-jda/JDA), implemented for Micup's REST and Gateway protocols.
 
-**Release:** `0.1.0-alpha` · **Java:** 21+ · **REST / Gateway:** v1
+**Release:** `0.2.0-alpha` · **Java:** 21+ · **REST / Gateway:** v1
 
 > Early alpha: the public API may change between releases. Micup4J does not yet provide JDA's full feature set or established performance characteristics.
 
@@ -18,11 +18,13 @@ Micup4J provides a familiar builder, event listener, and REST action API inspire
 | Gateway | Hello, Identify, heartbeat/ACK, reconnect with backoff, Resume, and Invalid Session recovery |
 | Events | Typed ready, message, and interaction events; raw access to other dispatches |
 | REST | Lazy actions, callbacks, futures, bounded request admission, and virtual thread workers |
-| Rate limits | Conservative global pacing, HTTP 429 retries, and exhausted route cooldowns |
+| Rate limits | Normalized routes, learned shared buckets, global pacing, and HTTP 429 cooldowns |
 | Messages | Send, retrieve, reply, edit, and delete |
 | Users | Retrieve a user and access the connected bot's user |
-| Commands | Register basic global and guild slash commands |
-| Interactions | Reply, defer, edit the original response, follow up, and send raw callback payloads |
+| Commands | Global/guild slash commands with typed basic value options |
+| Interactions | Priority/deadline-aware replies, defer, edit/read/delete original responses, and followups |
+| Embeds | Validated rich embed builder; channel, reply, and interaction helpers |
+| Diagnostics | Typed status/reconnect events and queue, retry, and latency metrics |
 | Shards | Explicit shard ID and shard count for a single session |
 
 Micup does not use Discord's intent system. Micup4J supports ignored event names instead.
@@ -50,9 +52,9 @@ From the repository directory:
 On Windows, use `gradlew.bat`. Build outputs are written to `build/libs/`:
 
 ```text
-Micup4J-0.1.0-alpha.jar
-Micup4J-0.1.0-alpha-sources.jar
-Micup4J-0.1.0-alpha-javadoc.jar
+Micup4J-0.2.0-alpha.jar
+Micup4J-0.2.0-alpha-sources.jar
+Micup4J-0.2.0-alpha-javadoc.jar
 ```
 
 The main JAR is a library JAR, not a standalone executable or a bundle of dependencies.
@@ -71,7 +73,7 @@ In your bot's `build.gradle.kts`:
 repositories { mavenCentral() }
 
 dependencies {
-    implementation("net.guneyilmaz0.micup4j:Micup4J:0.1.0-alpha")
+    implementation("net.guneyilmaz0.micup4j:Micup4J:0.2.0-alpha")
 }
 ```
 
@@ -200,7 +202,29 @@ Import `net.guneyilmaz0.micup4j.events.InteractionCreateEvent` for this handler.
 
 For longer work, submit `deferReply(true)` first and chain `editOriginal(...)` after it completes. Micup requires the initial response within **3 seconds** and permits later edits and followups within **15 minutes**. Those deadlines are enforced by the server. See [Interactions](https://micup.gg/docs/http-api/interactions/).
 
-`respond(type, JsonNode)` exposes supported callback shapes for component updates, autocomplete, and modals. Typed component builders and advanced command option builders are planned.
+`respond(type, JsonNode)` exposes supported callback shapes for component updates, autocomplete, and modals. Typed component builders, subcommands, choices, and advanced option constraints remain planned. Basic typed value options and rich embed builders are available.
+
+## Embeds and typed options
+
+```java
+import net.guneyilmaz0.micup4j.entities.EmbedBuilder;
+import net.guneyilmaz0.micup4j.interactions.OptionType;
+
+var embed = new EmbedBuilder()
+    .setTitle("Avatar", "https://example.com/avatar.webp")
+    .setColor(0x3498DB)
+    .setImage("https://example.com/avatar.webp")
+    .setFooter("Requested by a member", null)
+    .build();
+client.getMessageChannelById("123456789012345678").sendMessageEmbeds(embed).queue();
+
+var command = new SlashCommand("avatar", "Show a member's avatar")
+    .addOption(OptionType.USER, "user", "Choose a member", false);
+```
+
+Embed snapshots are immutable and validate Micup's documented per-field limits. Message helpers accept 1–10 embeds. `SlashCommand` is immutable: retain the definition returned by `addOption`. Required options must precede optional options and names must be unique.
+
+Interaction handlers can use `getOptionValue("user")`, `replyEmbeds(true, embed)`, and `editOriginalEmbeds(embed)`. A deferred response can be composed as `event.deferReply(true).flatMap(ignored -> event.editOriginalEmbeds(embed)).queue()`.
 
 ## Configuration
 
@@ -214,7 +238,7 @@ var builder = MicupBuilder.createLight(token)
 ```
 
 - `createLight` and `createDefault` currently behave identically: neither maintains a persistent entity cache.
-- Queue capacity must be positive. REST capacity includes running and waiting operations; event capacity counts waiting events, with one additional event potentially executing.
+- Queue capacity must be positive. Normal REST capacity includes running and waiting operations, with eight additional callback admission slots by default; event capacity counts waiting events, with one additional event potentially executing.
 - `.setShard(0, 2)` opens **one** session for shard 0 of 2. It does not create the other shard.
 - REST and discovery endpoints require HTTPS, and Gateway endpoints require WSS. Plain HTTP/WS is allowed only for loopback development endpoints.
 - `getGatewayPing()` returns heartbeat latency in milliseconds, or `-1` before the first acknowledgement.
@@ -224,14 +248,16 @@ var builder = MicupBuilder.createLight(token)
 
 The Gateway protocol runs separately from user listeners. Events are delivered in session order, and heartbeat sequences advance after listener processing completes. Resume suppresses duplicate dispatch sequences within the retained session; it does not provide a durable exactly-once delivery guarantee.
 
-The REST scheduler uses 256 fixed lock stripes and conservative pacing of 50 requests per second per client. Route exhaustion and 429 responses introduce cooldowns; a 429 request has at most five retries. Requests with an uncertain transport outcome are not retried by Micup4J. Dynamic merging of server bucket IDs and coordination across clients/processes are not implemented.
+The REST scheduler uses normalized routes and learned server bucket identifiers, with conservative pacing of 50 requests per second per client. Initial interaction callbacks have separate bounded admission, a reserved transport slot when concurrency exceeds one, and an original local deadline. Normal requests, cooldowns, retries, and active I/O are subject to configurable timeouts. Only HTTP 429 responses are retried.
 
-If the event queue fills, the client fails instead of silently acknowledging a dropped event. On shutdown, queued work is not persisted. A future cancellation does not guarantee that an already-started HTTP operation is cancelled.
+See [REST scheduling](docs/REST.md) and [Gateway lifecycle](docs/GATEWAY.md) for configuration, cancellation semantics, metrics, cache limits, and the close-code policy. Cross-client/process rate limit coordination is not implemented.
+
+If the event queue fills, the client fails instead of silently acknowledging a dropped event. On shutdown, queued work is not persisted. Cancellation propagates through composed actions and requests active HTTP cancellation; an already-applied server write cannot be undone.
 
 Not yet included:
 
 - Guild/member/role caches, permission calculation, and complete entity managers.
-- Typed embed/component builders, attachment uploads, and comprehensive command options.
+- Typed component builders, attachment uploads, subcommands, choices, and advanced command option constraints.
 - Automatic shard orchestration or distributed rate limit coordination.
 - Voice connections, audio playback, or music support.
 - A measured JDA performance comparison.

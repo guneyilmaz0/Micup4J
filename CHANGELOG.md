@@ -4,7 +4,35 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 
 ## [Unreleased]
 
-Changes after the initial alpha will be recorded in this section.
+Changes after 0.2.0-alpha will be recorded here.
+
+## [0.2.0-alpha] — 2026-10-26
+
+### Added
+
+- Bounded REST scheduling with normalized route keys, learned server-bucket sharing, major-resource separation, and bounded metadata caches.
+- Separate callback admission, earliest-deadline priority, and a reserved HTTP slot for initial interaction responses.
+- Configurable HTTP/total timeouts, maximum 429 retries, concurrency, cache capacity, and callback capacity through `RestConfig`.
+- Cancellation propagation through raw requests, mapped actions, and active flatMap children; timed blocking `complete(Duration)`.
+- `GatewayConfig` for connection, handshake, and reconnect timing.
+- Typed `StatusChangeEvent` and `ReconnectEvent`, a documented `GatewayCloseCode` policy, and credential-free REST/client metric snapshots.
+- Immutable basic slash value options: string, integer, boolean, user, channel, role, and number.
+- `EmbedBuilder`, immutable embed snapshots, and channel/reply/interaction embed helpers.
+- Interaction option value access and original response retrieval/deletion.
+- Access to the discovered Media Proxy endpoint and raw original-response edits, supporting the BMO avatar command integration.
+- Regression tests for shared buckets, cancellation, reserved callbacks, concurrent pacing, timeouts, missed ACKs, repeated reconnects, close-code recovery, builder validation, and delayed interaction handling.
+
+### Changed
+
+- Replaced sleeping route-lock workers with a bounded scheduler and asynchronous HTTP attempts.
+- Initial interaction callbacks now expire locally 2.5 seconds after event construction; this budget includes listener queue time.
+- `SlashCommand` definitions now include immutable option lists; the existing two-argument constructor remains available.
+- Shutdown completes pending event futures and aborts delayed Gateway upgrades.
+- BMO's source dependency now targets `0.2.0-alpha`.
+
+### Upgrade notes
+
+Default total REST duration is now two minutes. Normal request capacity is separate from eight reserved callback slots. Existing `queue()`, `submit()`, `complete()`, and basic slash command construction remain source-compatible. Recompile consuming applications after upgrading this alpha. See [UPDATE.md](UPDATE.md).
 
 ## [0.1.0-alpha] — 2026-10-25
 

@@ -7,7 +7,7 @@ Milestones describe intended scope, not guaranteed dates. Micup API availability
 | Milestone | Focus | Status |
 | --- | --- | --- |
 | `0.1.0-alpha` | Core bot session and REST foundation | Implemented |
-| `0.2.0-alpha` | Reliability, observability, and request scheduling | Planned |
+| `0.2.0-alpha` | Reliability, observability, and request scheduling | Implemented |
 | `0.3.0-alpha` | Guild entities, configurable caches, and permissions | Planned |
 | `0.4.0-alpha` | Commands, embeds, components, and uploads | Planned |
 | `0.5.0-beta` | Multi-shard operation and performance qualification | Planned |
@@ -28,14 +28,16 @@ The workflow definition is included; a successful remote CI run still needs veri
 
 ## 0.2.0-alpha — Reliability and diagnostics
 
-- [ ] Map server bucket identifiers to normalized routes and shared major resources.
-- [ ] Give initial interaction callbacks deadline-aware scheduling.
-- [ ] Define request timeouts, cancellation propagation, and retry policies explicitly.
-- [ ] Add typed status changes, reconnect diagnostics, and queue/latency metrics.
-- [ ] Expand tests for missed ACKs, delayed handshakes, repeated reconnects, and global rate limits under concurrency.
-- [ ] Make startup and shutdown behavior consistent under cancellation and callback races.
+- [x] Map server bucket identifiers to normalized routes and shared major resources.
+- [x] Give initial interaction callbacks deadline-aware scheduling.
+- [x] Define request timeouts, cancellation propagation, and retry policies explicitly.
+- [x] Add typed status changes, reconnect diagnostics, and queue/latency metrics.
+- [x] Expand tests for missed ACKs, delayed handshakes, repeated reconnects, and global rate limits under concurrency.
+- [x] Make startup and shutdown behavior consistent under cancellation and callback races.
 
 **Completion criteria:** documented behavior for every supported Gateway close code; deterministic regression coverage for timeout/cancellation paths; no unbounded request or event queues; no credential-bearing diagnostic output.
+
+This release also brings forward basic value-option definitions and rich embed builders. Advanced options, component builders, and attachment uploads remain in later milestones. See [release notes](docs/releases/README-0.2.0-alpha.md).
 
 ## 0.3.0-alpha — Entities, caches, and permissions
 
