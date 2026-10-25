@@ -13,6 +13,9 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.LongAdder;
+import net.guneyilmaz0.micup4j.config.*;
+import net.guneyilmaz0.micup4j.diagnostics.ClientMetrics;
 
 /** A single bot session. Owns its HTTP connections, event queue and Gateway lifecycle. */
 public final class Micup implements AutoCloseable {
@@ -23,6 +26,10 @@ public final class Micup implements AutoCloseable {
     private final CopyOnWriteArrayList<EventListener> listeners;
     private final ThreadPoolExecutor events;
     private final Consumer<Throwable> errorHandler;
+    private final int eventCapacity;
+    private final LongAdder deliveredEvents = new LongAdder(), listenerFailures = new LongAdder();
+    private final Set<CompletableFuture<Void>> pendingEvents = ConcurrentHashMap.newKeySet();
+    private volatile long lastEventQueueDelay;
     private final CompletableFuture<Micup> ready = new CompletableFuture<>();
     private final CompletableFuture<Void> terminated = new CompletableFuture<>();
     private final Object lifecycle = new Object();
@@ -30,15 +37,17 @@ public final class Micup implements AutoCloseable {
     private volatile User selfUser;
     private volatile String applicationId;
     private volatile GatewayClient gateway;
+    private volatile URI mediaBase;
     private volatile boolean closed;
     private final CompletableFuture<HttpResponse<String>> discovery;
 
-    Micup(String token, URI origin, List<EventListener> listeners, List<String> ignored, int restCapacity, int eventCapacity, int shardId, int shardCount, Consumer<Throwable> handler) {
+    Micup(String token, URI origin, List<EventListener> listeners, List<String> ignored, int restCapacity, int eventCapacity, int shardId, int shardCount, Consumer<Throwable> handler, RestConfig restConfig, GatewayConfig gatewayConfig) {
         this.listeners = new CopyOnWriteArrayList<>(listeners);
         errorHandler = handler;
+        this.eventCapacity = eventCapacity;
         events = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(eventCapacity),
                 Thread.ofPlatform().daemon().name("micup4j-events").factory(), new ThreadPoolExecutor.AbortPolicy());
-        rest = new RestClient(http, token, restCapacity);
+        rest = new RestClient(http, token, restCapacity, restConfig);
         URI url = origin.resolve("/.well-known/fluxer");
         discovery = http.sendAsync(HttpRequest.newBuilder(url).timeout(Duration.ofSeconds(20)).header("Accept", "application/json").header("User-Agent", net.guneyilmaz0.micup4j.MicupVersion.getUserAgent()).GET().build(), HttpResponse.BodyHandlers.ofString());
         discovery.whenComplete((response, failure) -> {
@@ -53,7 +62,12 @@ public final class Micup implements AutoCloseable {
                         throw new IllegalStateException("Instance discovery HTTP " + response.statusCode());
                     JsonNode endpoints = Json.parse(response.body()).path("endpoints");
                     rest.setBase(URI.create(endpoints.path("api_public").asText()));
-                    gateway = new GatewayClient(this, http, URI.create(endpoints.path("gateway").asText()), token, ignored, shardId, shardCount);
+                    if (endpoints.path("media").isTextual()) {
+                        URI media = URI.create(endpoints.path("media").asText());
+                        RestClient.requireEndpoint(media, false);
+                        mediaBase = media;
+                    }
+                    gateway = new GatewayClient(this, http, URI.create(endpoints.path("gateway").asText()), token, ignored, shardId, shardCount, gatewayConfig);
                     gateway.start();
                 } catch (Exception e) {
                     gatewayFailed(new IllegalStateException("Invalid instance discovery response"));
@@ -78,6 +92,12 @@ public final class Micup implements AutoCloseable {
 
     public RestClient getRestClient() {
         return rest;
+    }
+
+    /** The instance's discovered Media Proxy base URL, including any deployment path prefix. */
+    public URI getMediaBase() {
+        if (mediaBase == null) throw new IllegalStateException("Instance discovery did not publish a media endpoint");
+        return mediaBase;
     }
 
     public long getGatewayPing() {
@@ -137,22 +157,38 @@ public final class Micup implements AutoCloseable {
         return rest.request("PUT", "/applications/" + Json.id(getApplicationId()) + "/commands", body);
     }
 
+    public ClientMetrics getMetrics() {
+        return new ClientMetrics(status, rest.getMetrics(), events.getQueue().size(), eventCapacity,
+                deliveredEvents.sum(), listenerFailures.sum(), lastEventQueueDelay, getGatewayPing(),
+                gateway == null ? 0 : gateway.getReconnectCount());
+    }
+
     public void updateStatus(Status next) {
         synchronized (lifecycle) {
-            if (!closed) status = next;
+            if (closed || status == next || (status == Status.FAILED && next != Status.SHUTDOWN)) return;
+            Status previous = status;
+            status = next;
+            dispatchDiagnostic(new StatusChangeEvent(this, previous, next));
         }
     }
 
     public void onReady(JsonNode data) {
-        selfUser = User.fromJson(data.path("user"));
-        applicationId = data.path("application").path("id").asText(selfUser.id());
-        // Mark CONNECTED before waking awaitReady callers.
-        updateStatus(Status.CONNECTED);
-        ready.complete(this);
+        synchronized (lifecycle) {
+            if (closed || status == Status.FAILED) return;
+            selfUser = User.fromJson(data.path("user"));
+            applicationId = data.path("application").path("id").asText(selfUser.id());
+            updateStatus(Status.CONNECTED);
+            ready.complete(this);
+        }
+    }
+
+    public void dispatchDiagnostic(GenericEvent event) {
+        // Reserve a queue slot for protocol dispatches; local diagnostics are best-effort.
+        if (events.getQueue().remainingCapacity() < 2) return;
+        enqueueEvent(event);
     }
 
     public CompletableFuture<Void> dispatch(String type, long sequence, JsonNode data) {
-        CompletableFuture<Void> completion = new CompletableFuture<>();
         try {
             GenericEvent event = switch (type) {
                 case "READY" -> new ReadyEvent(this, sequence, data);
@@ -160,19 +196,29 @@ public final class Micup implements AutoCloseable {
                 case "INTERACTION_CREATE" -> new InteractionCreateEvent(this, sequence, data);
                 default -> new GenericEvent(this, type, sequence, data);
             };
+            return enqueueEvent(event);
+        } catch (Exception error) { return CompletableFuture.failedFuture(error); }
+    }
+
+    private CompletableFuture<Void> enqueueEvent(GenericEvent event) {
+        CompletableFuture<Void> completion = new CompletableFuture<>();
+        long queuedAt = System.nanoTime();
+        pendingEvents.add(completion);
+        completion.whenComplete((value, error) -> pendingEvents.remove(completion));
+        try {
             events.execute(() -> {
+                lastEventQueueDelay = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt);
                 for (EventListener listener : listeners) {
-                    try {
-                        listener.onEvent(event);
-                    } catch (Throwable error) {
-                        reportFailure(new IllegalStateException("Listener failed for " + type));
+                    try { listener.onEvent(event); }
+                    catch (Throwable error) {
+                        listenerFailures.increment();
+                        reportFailure(new IllegalStateException("Listener failed for " + event.getType()));
                     }
                 }
+                deliveredEvents.increment();
                 completion.complete(null);
             });
-        } catch (Exception e) {
-            completion.completeExceptionally(e);
-        }
+        } catch (Exception error) { completion.completeExceptionally(error); }
         return completion;
     }
 
@@ -187,7 +233,7 @@ public final class Micup implements AutoCloseable {
     public void gatewayFailed(Throwable error) {
         synchronized (lifecycle) {
             if (closed || status == Status.FAILED) return;
-            status = Status.FAILED;
+            updateStatus(Status.FAILED);
             ready.completeExceptionally(error);
             if (gateway != null) gateway.close();
             rest.close();
@@ -206,13 +252,14 @@ public final class Micup implements AutoCloseable {
     public void close() {
         synchronized (lifecycle) {
             if (closed) return;
+            updateStatus(Status.SHUTDOWN);
             closed = true;
-            status = Status.SHUTDOWN;
             ready.completeExceptionally(new IllegalStateException("Client closed"));
             discovery.cancel(true);
             if (gateway != null) gateway.close();
             rest.close();
             events.shutdownNow();
+            pendingEvents.forEach(event -> event.completeExceptionally(new IllegalStateException("Client closed")));
             http.shutdownNow();
             terminated.complete(null);
         }

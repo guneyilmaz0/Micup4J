@@ -3,6 +3,9 @@ package net.guneyilmaz0.micup4j.internal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import net.guneyilmaz0.micup4j.Micup;
+import net.guneyilmaz0.micup4j.config.GatewayConfig;
+import net.guneyilmaz0.micup4j.diagnostics.GatewayCloseCode;
+import net.guneyilmaz0.micup4j.events.ReconnectEvent;
 import java.net.URI;
 import java.net.http.*;
 import java.nio.ByteBuffer;
@@ -16,6 +19,8 @@ public final class GatewayClient implements AutoCloseable {
     private final HttpClient http;
     private final URI endpoint;
     private final String token;
+    private final GatewayConfig config;
+    private volatile long reconnectCount;
     private final List<String> ignored;
     private final int shardId, shardCount;
     private final ScheduledExecutorService state = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("micup4j-gateway").factory());
@@ -31,9 +36,10 @@ public final class GatewayClient implements AutoCloseable {
     private volatile long ping = -1;
     private long heartbeatSent;
 
-    public GatewayClient(Micup client, HttpClient http, URI endpoint, String token, List<String> ignored, int shardId, int shardCount) {
+    public GatewayClient(Micup client, HttpClient http, URI endpoint, String token, List<String> ignored, int shardId, int shardCount, GatewayConfig config) {
         RestClient.requireEndpoint(endpoint, true);
         this.client = client;
+        this.config = config;
         this.http = http;
         this.endpoint = endpoint;
         this.token = token;
@@ -45,6 +51,8 @@ public final class GatewayClient implements AutoCloseable {
     public void start() {
         execute(this::connect);
     }
+
+    public long getReconnectCount() { return reconnectCount; }
 
     public long getPing() {
         return ping;
@@ -66,7 +74,7 @@ public final class GatewayClient implements AutoCloseable {
         long id = ++generation;
         client.updateStatus(Micup.Status.CONNECTING);
         URI url = URI.create(endpoint + "?v=1&encoding=json");
-        connection = http.newWebSocketBuilder().connectTimeout(java.time.Duration.ofSeconds(15))
+        connection = http.newWebSocketBuilder().connectTimeout(config.connectTimeout())
                 .buildAsync(url, new SocketListener(id));
         connection.whenComplete((ws, error) -> {
             if (closed) {
@@ -78,13 +86,13 @@ public final class GatewayClient implements AutoCloseable {
                     if (ws != null) ws.abort();
                     return;
                 }
-                if (error != null) retry();
+                if (error != null) retry(ReconnectEvent.Reason.TRANSPORT_ERROR, -1);
             });
         });
         try {
             watchdog = state.schedule(() -> {
-                if (id == generation) retry();
-            }, 60, TimeUnit.SECONDS);
+                if (id == generation) retry(ReconnectEvent.Reason.HANDSHAKE_TIMEOUT, -1);
+            }, config.handshakeTimeout().toNanos(), TimeUnit.NANOSECONDS);
         } catch (RejectedExecutionException error) {
             if (!closed) throw error;
         }
@@ -117,7 +125,7 @@ public final class GatewayClient implements AutoCloseable {
                     else send(6, Json.object().put("token", token).put("session_id", sessionId).put("seq", sequence));
                     heartbeat = state.scheduleAtFixedRate(() -> {
                         if (awaitingAck) {
-                            retry();
+                            retry(ReconnectEvent.Reason.HEARTBEAT_TIMEOUT, -1);
                             return;
                         }
                         beat();
@@ -129,7 +137,7 @@ public final class GatewayClient implements AutoCloseable {
                     if (awaitingAck) ping = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - heartbeatSent);
                     awaitingAck = false;
                 }
-                case 7 -> retry();
+                case 7 -> retry(ReconnectEvent.Reason.SERVER_REQUEST, -1);
                 case 9 -> {
                     resetSession();
                     identify();
@@ -139,7 +147,7 @@ public final class GatewayClient implements AutoCloseable {
             }
         } catch (Exception e) {
             client.reportFailure(new IllegalStateException("Invalid Gateway payload"));
-            retry();
+            retry(ReconnectEvent.Reason.INVALID_PAYLOAD, -1);
         } finally {
             if (!closed && id == generation) ws.request(1);
         }
@@ -211,34 +219,38 @@ public final class GatewayClient implements AutoCloseable {
         sends = sends.thenCompose(value -> target.sendText(text, true).thenApply(ws -> (Void) null));
         sends.whenComplete((value, failure) -> {
             if (failure != null) execute(() -> {
-                if (id == generation) retry();
+                if (id == generation) retry(ReconnectEvent.Reason.TRANSPORT_ERROR, -1);
             });
         });
     }
 
     private void ended(long id, int code) {
         if (id != generation || closed) return;
-        if (Set.of(4001, 4002, 4004, 4005, 4010, 4011, 4012).contains(code)) {
+        GatewayCloseCode policy = GatewayCloseCode.fromCode(code);
+        if (policy.getAction() == GatewayCloseCode.Action.STOP) {
             fail(new IllegalStateException("Gateway closed with code " + code));
             return;
         }
-        if (code == 4003 || code == 4007) resetSession();
-        retry();
+        if (policy.getAction() == GatewayCloseCode.Action.IDENTIFY) resetSession();
+        retry(ReconnectEvent.Reason.CLOSE_CODE, code);
     }
 
-    private void retry() {
+    private void retry(ReconnectEvent.Reason reason, int closeCode) {
         if (closed || reconnect != null) return;
         generation++;
         if (heartbeat != null) heartbeat.cancel(false);
         if (watchdog != null) watchdog.cancel(false);
-        if (socket != null) {
-            socket.abort();
-            socket = null;
-        }
+        if (socket != null) { socket.abort(); socket = null; }
         awaitingAck = false;
         client.updateStatus(Micup.Status.RECONNECTING);
-        long delay = Math.min(30_000, 1000L << Math.min(attempts++, 5)) + ThreadLocalRandom.current().nextLong(250);
-        reconnect = state.schedule(this::connect, delay, TimeUnit.MILLISECONDS);
+        long maximum = config.reconnectMaxDelay().toNanos();
+        long base = config.reconnectBaseDelay().toNanos();
+        long backoff = Math.min(maximum, base * (1L << Math.min(attempts++, 16)));
+        long jitter = ThreadLocalRandom.current().nextLong(Math.max(1, Math.min(base / 4, maximum - backoff + 1)));
+        long delay = Math.min(maximum, backoff + jitter);
+        reconnectCount++;
+        client.dispatchDiagnostic(new ReconnectEvent(client, reason, attempts, java.time.Duration.ofNanos(delay), closeCode));
+        reconnect = state.schedule(this::connect, delay, TimeUnit.NANOSECONDS);
     }
 
     private void fail(Throwable error) {
@@ -318,7 +330,7 @@ public final class GatewayClient implements AutoCloseable {
         @Override
         public void onError(WebSocket ws, Throwable error) {
             execute(() -> {
-                if (id == generation) retry();
+                if (id == generation) retry(ReconnectEvent.Reason.TRANSPORT_ERROR, -1);
             });
         }
     }

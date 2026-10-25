@@ -9,6 +9,7 @@ import okhttp3.*;
 import okhttp3.mockwebserver.*;
 import org.junit.jupiter.api.*;
 import java.time.Duration;
+import net.guneyilmaz0.micup4j.config.GatewayConfig;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -22,6 +23,8 @@ class GatewayTest {
     final List<Throwable> errors = new CopyOnWriteArrayList<>();
     final AtomicInteger connections = new AtomicInteger();
     volatile int heartbeatInterval = 1000;
+    volatile boolean acknowledge = true, hello = true;
+    GatewayConfig gatewayConfig = GatewayConfig.defaults();
 
     @BeforeEach void setup() throws Exception {
         server = new MockWebServer(); server.start();
@@ -34,13 +37,13 @@ class GatewayTest {
                 if (request.getPath().startsWith("/gateway?")) return new MockResponse().withWebSocketUpgrade(new WebSocketListener() {
                     @Override public void onOpen(WebSocket ws, Response response) {
                         connections.incrementAndGet(); sockets.add(ws);
-                        ws.send("{\"op\":10,\"d\":{\"heartbeat_interval\":" + heartbeatInterval + "}}");
+                        if (hello) ws.send("{\"op\":10,\"d\":{\"heartbeat_interval\":" + heartbeatInterval + "}}");
                     }
                     @Override public void onMessage(WebSocket ws, String text) {
                         JsonNode frame = Json.parse(text); frames.add(frame);
                         if (frame.path("op").asInt() == 2) ws.send(ready());
                         if (frame.path("op").asInt() == 6) ws.send("{\"op\":0,\"t\":\"RESUMED\",\"s\":1,\"d\":{}}");
-                        if (frame.path("op").asInt() == 1) ws.send("{\"op\":11}");
+                        if (frame.path("op").asInt() == 1 && acknowledge) ws.send("{\"op\":11}");
                     }
                     @Override public void onClosing(WebSocket ws, int code, String reason) { ws.close(code, reason); }
                 });
@@ -55,7 +58,7 @@ class GatewayTest {
     String ready() { return "{\"op\":0,\"t\":\"READY\",\"s\":1,\"d\":{\"session_id\":\"session-123\",\"user\":{\"id\":\"1\",\"username\":\"test\",\"bot\":true},\"application\":{\"id\":\"42\",\"flags\":0},\"guilds\":[]}}"; }
     Micup start(ListenerAdapter listener) throws Exception {
         client = MicupBuilder.createDefault("test-token").setInstanceOrigin(server.url("/").uri())
-            .setShard(0, 2).setIgnoredEvents("TYPING_START").setErrorHandler(errors::add).addEventListeners(listener).build();
+            .setGatewayConfig(gatewayConfig).setShard(0, 2).setIgnoredEvents("TYPING_START").setErrorHandler(errors::add).addEventListeners(listener).build();
         client.awaitReady(Duration.ofSeconds(5)); return client;
     }
     JsonNode opcode(int op) throws Exception {
@@ -252,6 +255,115 @@ class GatewayTest {
         assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
         assertTrue(client.ready().isCompletedExceptionally());
         assertTrue(errors.isEmpty());
+    }
+
+    GatewayConfig quickGateway() {
+        return new GatewayConfig(Duration.ofSeconds(2), Duration.ofSeconds(3), Duration.ofMillis(20), Duration.ofMillis(60));
+    }
+    @Test void missedHeartbeatAckReconnectsAndPublishesSanitizedDiagnostics() throws Exception {
+        heartbeatInterval = 80; acknowledge = false; gatewayConfig = quickGateway();
+        var reconnect = new CompletableFuture<ReconnectEvent>();
+        var statuses = new CopyOnWriteArrayList<Micup.Status>();
+        start(new ListenerAdapter() {
+            @Override public void onStatusChange(StatusChangeEvent event) { statuses.add(event.getNewStatus()); }
+            @Override public void onReconnect(ReconnectEvent event) { reconnect.complete(event); }
+        });
+        var event = reconnect.get(3, TimeUnit.SECONDS);
+        assertEquals(ReconnectEvent.Reason.HEARTBEAT_TIMEOUT, event.getReason());
+        assertEquals(-1, event.getSequence());
+        assertEquals(1, event.getAttempt());
+        assertTrue(statuses.contains(Micup.Status.CONNECTED));
+        assertTrue(statuses.contains(Micup.Status.RECONNECTING));
+        assertEquals(1, client.getMetrics().reconnects());
+        assertFalse(event.getData().toString().contains("test-token"));
+        assertFalse(event.getData().toString().contains("session-123"));
+        opcode(6); // The missed ACK must actually open a fresh socket and Resume.
+        assertTrue(connections.get() >= 2);
+    }
+    @Test void handshakeTimeoutRetriesAndCloseCancelsPendingReady() throws Exception {
+        hello = false;
+        gatewayConfig = new GatewayConfig(Duration.ofSeconds(1), Duration.ofMillis(120), Duration.ofMillis(20), Duration.ofMillis(60));
+        var reconnect = new CompletableFuture<ReconnectEvent>();
+        client = MicupBuilder.createDefault("test-token").setInstanceOrigin(server.url("/").uri()).setGatewayConfig(gatewayConfig)
+                .setErrorHandler(errors::add).addEventListeners(new ListenerAdapter() {
+                    @Override public void onReconnect(ReconnectEvent event) { reconnect.complete(event); }
+                }).build();
+        assertEquals(ReconnectEvent.Reason.HANDSHAKE_TIMEOUT, reconnect.get(3, TimeUnit.SECONDS).getReason());
+        assertFalse(client.ready().isDone());
+        client.close();
+        assertThrows(ExecutionException.class, () -> client.ready().get(1, TimeUnit.SECONDS));
+        assertTrue(client.termination().isDone());
+        assertTrue(errors.isEmpty());
+    }
+    @Test void repeatedReconnectsKeepSessionAndRemainCancellable() throws Exception {
+        gatewayConfig = quickGateway(); start(new ListenerAdapter() {}); opcode(2);
+        WebSocket active = sockets.poll(2, TimeUnit.SECONDS);
+        for (int i = 0; i < 3; i++) {
+            active.send("{\"op\":7}");
+            active = sockets.poll(3, TimeUnit.SECONDS);
+            assertNotNull(active);
+            assertEquals("session-123", opcode(6).path("d").path("session_id").asText());
+        }
+        assertEquals(3, client.getMetrics().reconnects());
+        client.close();
+        assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+    }
+    @Test void invalidSequenceStartsFreshIdentifyAndDoesNotPublishServerReason() throws Exception {
+        gatewayConfig = quickGateway();
+        var reconnect = new CompletableFuture<ReconnectEvent>();
+        start(new ListenerAdapter() { @Override public void onReconnect(ReconnectEvent event) { reconnect.complete(event); } });
+        opcode(2);
+        sockets.poll(2, TimeUnit.SECONDS).close(4007, "private-server-reason");
+        var event = reconnect.get(3, TimeUnit.SECONDS);
+        assertEquals(4007, event.getCloseCode());
+        assertEquals(ReconnectEvent.Reason.CLOSE_CODE, event.getReason());
+        assertFalse(event.getData().toString().contains("private-server-reason"));
+        assertEquals("test-token", opcode(2).path("d").path("token").asText());
+    }
+    @Test void interactionDeadlineIncludesTimeWaitingForListener() throws Exception {
+        var blocked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var failedReply = new CompletableFuture<Throwable>();
+        try {
+            start(new ListenerAdapter() {
+                @Override public void onMessageReceived(MessageReceivedEvent event) {
+                    blocked.countDown();
+                    try { release.await(5, TimeUnit.SECONDS); } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+                }
+                @Override public void onInteractionCreate(InteractionCreateEvent event) {
+                    event.reply("Too late").submit().whenComplete((value, error) -> failedReply.complete(error));
+                }
+            });
+            var ws = sockets.poll(2, TimeUnit.SECONDS);
+            ws.send("{\"op\":0,\"s\":2,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"2\",\"channel_id\":\"3\",\"author\":{\"id\":\"4\"}}}");
+            assertTrue(blocked.await(2, TimeUnit.SECONDS));
+            ws.send("{\"op\":0,\"s\":3,\"t\":\"INTERACTION_CREATE\",\"d\":{\"id\":\"5\",\"application_id\":\"42\",\"type\":2,\"token\":\"private-interaction\",\"data\":{\"name\":\"ping\"}}}");
+            long wait = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (client.getMetrics().queuedEvents() == 0 && System.nanoTime() < wait) Thread.sleep(5);
+            assertEquals(1, client.getMetrics().queuedEvents());
+            Thread.sleep(2600); // Explicitly exercise the platform's short response deadline.
+            release.countDown();
+            assertInstanceOf(TimeoutException.class, failedReply.get(2, TimeUnit.SECONDS));
+            assertEquals(2, server.getRequestCount()); // Discovery + WebSocket; no late callback.
+        } finally { release.countDown(); }
+    }
+
+    @Test void embedRepliesAndSlashOptionsUseDocumentedPayloads() throws Exception {
+        var received = new CompletableFuture<InteractionCreateEvent>();
+        start(new ListenerAdapter() { @Override public void onInteractionCreate(InteractionCreateEvent event) { received.complete(event); } });
+        var embed = new net.guneyilmaz0.micup4j.entities.EmbedBuilder().setTitle("Avatar", "https://example.com/avatar.webp")
+                .setAuthor("Target", null, null).setImage("https://example.com/avatar.webp").setFooter("Requested by user", null).build();
+        client.getMessageChannelById("2").sendMessageEmbeds(embed).submit().get(3, TimeUnit.SECONDS);
+        var sent = route("/messages");
+        assertEquals("Avatar", Json.parse(sent.getBody().readUtf8()).path("embeds").get(0).path("title").asText());
+        sockets.poll(2, TimeUnit.SECONDS).send("{\"op\":0,\"s\":2,\"t\":\"INTERACTION_CREATE\",\"d\":{\"id\":\"123\",\"application_id\":\"42\",\"token\":\"interaction-secret\",\"type\":2,\"data\":{\"name\":\"avatar\",\"options\":[{\"type\":6,\"name\":\"user\",\"value\":\"9\"}]}}}");
+        var event = received.get(3, TimeUnit.SECONDS);
+        assertEquals("9", event.getOptionValue("user").orElseThrow().asText());
+        assertTrue(event.getOptionValue("absent").isEmpty());
+        event.replyEmbeds(true, embed).submit().get(3, TimeUnit.SECONDS);
+        var callback = Json.parse(route("/callback").getBody().readUtf8());
+        assertEquals(64, callback.path("data").path("flags").asInt());
+        assertEquals("Avatar", callback.path("data").path("embeds").get(0).path("title").asText());
     }
 
 }

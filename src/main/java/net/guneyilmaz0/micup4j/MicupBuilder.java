@@ -2,6 +2,8 @@ package net.guneyilmaz0.micup4j;
 
 import net.guneyilmaz0.micup4j.hooks.EventListener;
 import net.guneyilmaz0.micup4j.internal.RestClient;
+import net.guneyilmaz0.micup4j.config.RestConfig;
+import net.guneyilmaz0.micup4j.config.GatewayConfig;
 import java.net.URI;
 import java.util.*;
 import java.util.function.Consumer;
@@ -9,6 +11,8 @@ import java.util.function.Consumer;
 /** JDA-style builder for a single Micup Gateway session. */
 public final class MicupBuilder {
     private final String token;
+    private RestConfig restConfig = RestConfig.defaults();
+    private GatewayConfig gatewayConfig = GatewayConfig.defaults();
     private URI origin = URI.create("https://micup.gg");
     private final List<EventListener> listeners = new ArrayList<>();
     private List<String> ignoredEvents = List.of();
@@ -75,7 +79,15 @@ public final class MicupBuilder {
         return this;
     }
 
+    public MicupBuilder setRestConfig(RestConfig config) {
+        restConfig = Objects.requireNonNull(config); return this;
+    }
+
+    public MicupBuilder setGatewayConfig(GatewayConfig config) {
+        gatewayConfig = Objects.requireNonNull(config); return this;
+    }
+
     public Micup build() {
-        return new Micup(token, origin, List.copyOf(listeners), ignoredEvents, restCapacity, eventCapacity, shardId, shardCount, errorHandler);
+        return new Micup(token, origin, List.copyOf(listeners), ignoredEvents, restCapacity, eventCapacity, shardId, shardCount, errorHandler, restConfig, gatewayConfig);
     }
 }
