@@ -5,6 +5,8 @@ import net.guneyilmaz0.micup4j.requests.*;
 import okhttp3.mockwebserver.*;
 import org.junit.jupiter.api.*;
 import java.net.URI;
+import java.time.Duration;
+import net.guneyilmaz0.micup4j.config.RestConfig;
 import java.net.http.HttpClient;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -92,6 +94,111 @@ class RestClientTest {
         rest.request("GET", "/users/2", null).submit().get(5, TimeUnit.SECONDS);
         assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) >= 200);
         assertEquals(7, server.getRequestCount());
+    }
+
+    void policy(RestConfig config, int capacity) {
+        rest.close(); rest = new RestClient(http, "secret-token", capacity, config); rest.setBase(server.url("/api").uri());
+    }
+    @Test void normalizedMessageIdsShareChannelCooldown() throws Exception {
+        server.enqueue(json("{}").setHeader("X-RateLimit-Bucket", "shared").setHeader("X-RateLimit-Remaining", "0").setHeader("X-RateLimit-Reset-After", ".2"));
+        server.enqueue(json("{}"));
+        rest.request("GET", "/channels/2/messages/3", null).complete();
+        long start = System.nanoTime();
+        rest.request("GET", "/channels/2/messages/4", null).complete();
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) >= 160);
+    }
+    @Test void learnedBucketMergesDifferentRoutesWithoutMergingChannels() {
+        server.enqueue(json("{}").setHeader("X-RateLimit-Bucket", "shared"));
+        server.enqueue(json("{}").setHeader("X-RateLimit-Bucket", "shared").setHeader("X-RateLimit-Remaining", "0").setHeader("X-RateLimit-Reset-After", ".2"));
+        server.enqueue(json("{}"));
+        server.enqueue(json("{}"));
+        rest.request("GET", "/channels/2/messages/3", null).complete();
+        rest.request("POST", "/channels/2/messages", Json.object().put("content", "x")).complete();
+        // Another major resource is eligible despite the shared server hash.
+        rest.request("GET", "/channels/9/messages/3", null).complete();
+        long start = System.nanoTime();
+        rest.request("GET", "/channels/2/messages/5", null).complete();
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) >= 100);
+    }
+    @Test void cancellationOfMappedQueuedActionReleasesAdmission() throws Exception {
+        policy(RestConfig.defaults(), 1);
+        server.enqueue(json("{}").setHeader("X-RateLimit-Remaining", "0").setHeader("X-RateLimit-Reset-After", "1"));
+        rest.request("GET", "/users/1", null).complete();
+        var waiting = rest.request("GET", "/users/1", null).map(value -> value.path("id").asText()).submit();
+        assertTrue(waiting.cancel(true));
+        assertEquals(0, rest.getMetrics().queued());
+        assertEquals(1, rest.getMetrics().cancelled());
+        server.enqueue(json("{}"));
+        rest.request("GET", "/users/2", null).submit().get(3, TimeUnit.SECONDS);
+        assertEquals(2, server.getRequestCount());
+    }
+    @Test void totalDeadlineIncludesRateLimitWait() {
+        policy(RestConfig.defaults().withTotalTimeout(Duration.ofMillis(120)), 4);
+        server.enqueue(json("{\"retry_after\":10}").setResponseCode(429));
+        var error = assertThrows(CompletionException.class, () -> rest.request("GET", "/users/1", null).complete());
+        assertInstanceOf(TimeoutException.class, error.getCause());
+        assertEquals(1, server.getRequestCount());
+        assertEquals(0, rest.getMetrics().queued());
+    }
+    @Test void attemptTimeoutDoesNotRetryUncertainWrites() {
+        policy(RestConfig.defaults().withRequestTimeout(Duration.ofMillis(80)), 4);
+        server.enqueue(json("{}").setHeadersDelay(300, TimeUnit.MILLISECONDS));
+        var error = assertThrows(CompletionException.class, () -> rest.request("POST", "/channels/2/messages", Json.object().put("content", "x")).complete());
+        assertInstanceOf(TimeoutException.class, error.getCause());
+        assertEquals(1, server.getRequestCount());
+        assertEquals(0, rest.getMetrics().retries());
+    }
+    @Test void callbackHasReservedAdmissionAndTransportSlot() throws Exception {
+        policy(RestConfig.defaults().withMaxConcurrency(2), 1);
+        server.enqueue(json("{}").setHeadersDelay(1, TimeUnit.SECONDS));
+        server.enqueue(new MockResponse().setResponseCode(204));
+        var normal = rest.request("GET", "/users/1", null).submit();
+        assertNotNull(server.takeRequest(2, TimeUnit.SECONDS));
+        assertThrows(CompletionException.class, () -> rest.request("GET", "/users/2", null).complete());
+        rest.requestCallback("/interactions/3/callback-secret/callback", Json.object().put("type", 5),
+                System.nanoTime() + TimeUnit.SECONDS.toNanos(2)).submit().get(2, TimeUnit.SECONDS);
+        assertFalse(normal.isDone(), "The initial callback must not wait for the normal transport slot");
+        var callback = server.takeRequest(2, TimeUnit.SECONDS);
+        assertEquals("/api/v1/interactions/3/callback-secret/callback", callback.getPath());
+        assertNull(callback.getHeader("Authorization"));
+        normal.cancel(true);
+        assertEquals(0, rest.getMetrics().inFlight());
+    }
+    @Test void expiredCallbackIsNotSentAndDiagnosticsContainNoSecret() {
+        var error = assertThrows(CompletionException.class, () -> rest.requestCallback("/interactions/3/callback-secret/callback", Json.object(), System.nanoTime() - 1).complete());
+        assertInstanceOf(TimeoutException.class, error.getCause());
+        assertEquals(0, server.getRequestCount());
+        assertFalse(rest.getMetrics().toString().contains("callback-secret"));
+    }
+    @Test void routeAndServerBucketCachesRemainBounded() {
+        policy(RestConfig.defaults().withBucketCacheSize(2), 4);
+        for (int i = 1; i <= 10; i++) {
+            server.enqueue(json("{}").setHeader("X-RateLimit-Bucket", "bucket" + i));
+            rest.request("GET", "/users/" + i, null).complete();
+        }
+        assertTrue(rest.getMetrics().trackedRoutes() <= 2);
+        assertTrue(rest.getMetrics().trackedBuckets() <= 2);
+        assertEquals(10, rest.getMetrics().completed());
+    }
+    @Test void concurrentRequestsHonorGlobalPacing() throws Exception {
+        policy(RestConfig.defaults(), 16);
+        var tasks = new java.util.ArrayList<CompletableFuture<?>>();
+        for (int i = 1; i <= 12; i++) server.enqueue(json("{}"));
+        long started = System.nanoTime();
+        for (int i = 1; i <= 12; i++) tasks.add(rest.request("GET", "/channels/" + i, null).submit());
+        CompletableFuture.allOf(tasks.toArray(CompletableFuture[]::new)).get(5, TimeUnit.SECONDS);
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) >= 180);
+        assertEquals(12, rest.getMetrics().submitted());
+        assertEquals(12, rest.getMetrics().completed());
+        assertEquals(0, rest.getMetrics().inFlight());
+    }
+    @Test void configuredRetryBudgetIsApplied() {
+        policy(RestConfig.defaults().withMaxRetries(1), 4);
+        server.enqueue(json("{\"code\":\"RATE_LIMITED\",\"retry_after\":0.001}").setResponseCode(429));
+        server.enqueue(json("{\"code\":\"RATE_LIMITED\",\"retry_after\":0.001}").setResponseCode(429));
+        assertThrows(CompletionException.class, () -> rest.request("GET", "/users/1", null).complete());
+        assertEquals(2, server.getRequestCount());
+        assertEquals(1, rest.getMetrics().retries());
     }
 
 }
