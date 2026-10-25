@@ -8,7 +8,7 @@ Milestones describe intended scope, not guaranteed dates. Micup API availability
 | --- | --- | --- |
 | `0.1.0-alpha` | Core bot session and REST foundation | Implemented |
 | `0.2.0-alpha` | Reliability, observability, and request scheduling | Implemented |
-| `0.3.0-alpha` | Guild entities, configurable caches, and permissions | Planned |
+| `0.3.0-alpha` | Guild entities, configurable caches, and permissions | In progress |
 | `0.4.0-alpha` | Commands, embeds, components, and uploads | Planned |
 | `0.5.0-beta` | Multi-shard operation and performance qualification | Planned |
 | `1.0.0` | Stable core API and documented compatibility | Planned |
@@ -41,14 +41,19 @@ This release also brings forward basic value-option definitions and rich embed b
 
 ## 0.3.0-alpha — Entities, caches, and permissions
 
-- [ ] Add guild, member, role, and typed channel models.
-- [ ] Implement guild/member/role retrieval and mutation APIs supported for bots.
-- [ ] Add configurable cache policies with separate light/default presets.
-- [ ] Apply complete guild snapshots and incremental events consistently.
-- [ ] Implement permission bitfields, role aggregation, and channel overrides.
-- [ ] Support member queries and bounded pagination.
+- [x] Add immutable guild, member, role, and typed guild-channel models.
+- [x] Add typed guild/member/role/channel reads and basic guild names, member nicknames, role creation/renaming, and role assignment.
+- [ ] Expand mutation coverage, audit reasons, and feature-gated permission writes.
+- [x] Add bounded configurable cache policies with separate light/default presets.
+- [x] Apply guild snapshots, syncs, incremental/bulk updates, deletions, and unavailable-state invalidation before listeners.
+- [x] Implement unsigned 64-bit masks, role aggregation, channel overwrites, and explicit failures for incomplete permission state.
+- [x] Add bounded HTTP member pages with exclusive, validated cursors.
+- [ ] Add indexed member queries and Gateway member-request helpers.
+- [ ] Compare permission calculations with server fixtures and verify real guild/subscription recovery.
 
 **Completion criteria:** snapshots and incremental updates yield equivalent state in tests; cache limits and invalidation rules are documented; permission results match Micup's documented rules and server fixtures.
+
+The first implementation is available in the source checkout under **Unreleased**, not in the prepared `0.2.0-alpha` release. See [entities, caches, and permissions](docs/ENTITIES.md) for limits, update ordering, and the implemented subset.
 
 ## 0.4.0-alpha — Bot interaction toolkit
 

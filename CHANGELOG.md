@@ -4,7 +4,23 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 
 ## [Unreleased]
 
-Changes after 0.2.0-alpha will be recorded here.
+### Added
+
+- Immutable guild, member, role, typed guild-channel and permission-overwrite snapshots.
+- Typed HTTP reads and basic guild naming, member nickname, role creation/renaming and role-assignment actions.
+- Bounded member pages with explicit limits, unsigned ascending cursors and response validation.
+- Configurable `CachePolicy`, bounded Gateway-owned entity state, bulk updates, sync handling and deletion/unavailability invalidation.
+- Unsigned 64-bit `PermissionSet`, the Micup permission registry and guild/channel permission resolution with incomplete-state validation.
+- Snapshot/incremental equivalence, eviction, permission-ordering and HTTP/Gateway integration tests.
+- [Entity API guide](docs/ENTITIES.md) documenting the unreleased 0.3 milestone scope.
+
+### Changed
+
+- In this checkout, `createDefault` now caches bounded entity state; `createLight` retains none. Enabled caches reject ignored state events at build time.
+- Cache updates precede the matching event's listeners. HTTP responses remain detached to avoid overwriting newer Gateway state.
+- Invalid permission-bearing entity events fail processing with sanitized diagnostics. Missing member roles and channel overwrites are not interpreted as empty sets.
+
+Version remains `0.2.0-alpha` until the next release is explicitly prepared. Indexed member search, wider mutation coverage and live-server fixture qualification remain open in the 0.3 roadmap.
 
 ## [0.2.0-alpha] — 2026-10-26
 

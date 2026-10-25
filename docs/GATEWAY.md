@@ -69,4 +69,6 @@ Events remain ordered within a session. Processed sequences advance after listen
 
 A full event queue causes a permanent client failure instead of silently acknowledging a dropped dispatch. Listener exceptions are isolated and reported without their potentially credential-bearing exception text. Shutdown aborts open or late-opening sockets, cancels retry timers, closes REST work, and completes pending lifecycle futures.
 
+The unreleased source checkout adds ordered entity-cache updates before listeners; see [entity state and invalidation](ENTITIES.md). Invalid permission-bearing entity payloads fail processing and are not acknowledged as successful delivery.
+
 Reference: [Micup Gateway](https://micup.gg/docs/gateway/overview/), [close codes](https://micup.gg/docs/gateway/opcodes-and-close-codes/).

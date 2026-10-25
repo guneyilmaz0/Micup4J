@@ -10,6 +10,10 @@ Micup4J provides a familiar builder, event listener, and REST action API inspire
 
 [Getting started](#getting-started) · [Supported features](#supported-features) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Upgrade guide](UPDATE.md)
 
+## Unreleased development
+
+The current source checkout also includes the first `0.3.0-alpha` milestone work: typed guild/member/role/channel reads, basic management actions, bounded member pagination, configurable entity caches and permission calculations. These additions are not in the previously prepared `0.2.0-alpha` release. See the [entity API guide](docs/ENTITIES.md) for usage, cache defaults, consistency rules and remaining scope.
+
 ## Supported features
 
 | Area | Available in this release |
@@ -237,7 +241,7 @@ var builder = MicupBuilder.createLight(token)
     .setErrorHandler(error -> System.err.println(error.getMessage()));
 ```
 
-- `createLight` and `createDefault` currently behave identically: neither maintains a persistent entity cache.
+- In the unreleased source checkout, `createDefault` uses bounded entity caches and `createLight` stores none. Use `setCachePolicy(...)` to customize limits; cached clients require their state events. The prepared `0.2.0-alpha` release had no persistent entity cache.
 - Queue capacity must be positive. Normal REST capacity includes running and waiting operations, with eight additional callback admission slots by default; event capacity counts waiting events, with one additional event potentially executing.
 - `.setShard(0, 2)` opens **one** session for shard 0 of 2. It does not create the other shard.
 - REST and discovery endpoints require HTTPS, and Gateway endpoints require WSS. Plain HTTP/WS is allowed only for loopback development endpoints.
@@ -256,7 +260,7 @@ If the event queue fills, the client fails instead of silently acknowledging a d
 
 Not yet included:
 
-- Guild/member/role caches, permission calculation, and complete entity managers.
+- Complete entity managers, indexed member queries, Gateway member requests, and advanced mutation helpers. Basic caches and permission resolution are available in the unreleased source checkout.
 - Typed component builders, attachment uploads, subcommands, choices, and advanced command option constraints.
 - Automatic shard orchestration or distributed rate limit coordination.
 - Voice connections, audio playback, or music support.
@@ -279,7 +283,7 @@ Library-generated HTTP errors omit credential-bearing URLs and response bodies. 
 ./gradlew publishToMavenLocal      # Install the alpha into Maven local.
 ```
 
-Tests use local mock servers and require no Micup token. They cover discovery, authentication payloads, heartbeat sequencing, reconnect/Resume, interactions, rate limits, queue handling, and a 1,000-event ordering smoke test. The event burst is a correctness test, not a production benchmark.
+Tests use local mock servers and require no Micup token. They cover discovery, authentication payloads, heartbeat sequencing, reconnect/Resume, interactions, rate limits, queue handling, entity cache consistency, permission precedence, member pagination, and a 1,000-event ordering smoke test. The event burst is a correctness test, not a production benchmark.
 
 The GitHub workflow runs the build on JDK 21. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [UPDATE.md](UPDATE.md) for release preparation.
 
