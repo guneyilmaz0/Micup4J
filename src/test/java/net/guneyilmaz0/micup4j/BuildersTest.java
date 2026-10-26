@@ -43,4 +43,27 @@ class BuildersTest {
         assertThrows(IllegalArgumentException.class, () -> new SlashCommand("UPPERCASE", "Invalid"));
         assertEquals("é", new SlashCommand("e\u0301", "NFC").name());
     }
+    @Test void jdaStyleEmbedCopiesRemainIndependentAndKeepFluentReturnTypes() {
+        net.guneyilmaz0.micup4j.EmbedBuilder original = new net.guneyilmaz0.micup4j.EmbedBuilder()
+                .setAuthor("Author").setTitle("Original").setColor(java.awt.Color.BLUE)
+                .setDescription("Hello").appendDescription(" world").addField("Name", "Value", false);
+        var snapshot = original.build();
+        var copied = new net.guneyilmaz0.micup4j.EmbedBuilder(snapshot).clearFields().setFooter("Footer").build();
+        original.clear().setTitle("Reused");
+        assertEquals("Original", snapshot.toJson().path("title").asText());
+        assertEquals(1, snapshot.toJson().path("fields").size()); assertFalse(copied.toJson().has("fields"));
+        assertEquals("Hello world", copied.toJson().path("description").asText());
+        assertEquals(255, copied.toJson().path("color").asInt());
+    }
+
+    @Test void jdaStyleCommandDefinitionsAreMutableButSerializeSnapshots() {
+        var command = net.guneyilmaz0.micup4j.interactions.commands.build.Commands.slash("example", "Example command");
+        var before = command.toJson();
+        command.addOption(net.guneyilmaz0.micup4j.interactions.commands.OptionType.STRING, "value", "Value", false);
+        assertEquals(0, before.path("options").size()); assertEquals(1, command.toJson().path("options").size());
+        assertThrows(IllegalArgumentException.class, () -> command.addOption(
+                net.guneyilmaz0.micup4j.interactions.commands.OptionType.STRING, "required", "Required", true));
+        assertEquals(1, command.toJson().path("options").size());
+    }
+
 }

@@ -7,8 +7,23 @@ import java.time.Instant;
 import java.util.Set;
 
 /** Mutable builder using Micup's documented rich-embed field limits; build creates a snapshot. */
-public final class EmbedBuilder {
+public class EmbedBuilder {
     private final ObjectNode data = Json.object();
+    public EmbedBuilder() {}
+    public EmbedBuilder(MessageEmbed embed) { data.setAll(embed.toJson()); }
+    public EmbedBuilder(EmbedBuilder builder) { data.setAll(builder.data.deepCopy()); }
+    public EmbedBuilder clear() { data.removeAll(); return this; }
+    public EmbedBuilder clearFields() { data.remove("fields"); return this; }
+    public EmbedBuilder setAuthor(String name) { return setAuthor(name, null, null); }
+    public EmbedBuilder setAuthor(String name, String url) { return setAuthor(name, url, null); }
+    public EmbedBuilder setFooter(String text) { return setFooter(text, null); }
+    public EmbedBuilder setColor(java.awt.Color color) {
+        if (color == null) { data.remove("color"); return this; }
+        return setColor(color.getRGB() & 0xFFFFFF);
+    }
+    public EmbedBuilder appendDescription(CharSequence text) {
+        return setDescription(data.path("description").asText("") + java.util.Objects.requireNonNull(text));
+    }
     public EmbedBuilder setTitle(String title) { return setTitle(title, null); }
     public EmbedBuilder setTitle(String title, String url) { text(data, "title", title, 256, false); url(data, "url", url, false); return this; }
     public EmbedBuilder setDescription(String text) { text(data, "description", text, 4096, false); return this; }

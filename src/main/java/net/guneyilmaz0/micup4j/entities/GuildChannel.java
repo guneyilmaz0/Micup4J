@@ -6,13 +6,16 @@ import java.util.*;
 
 /** Immutable guild channel snapshot. Raw type is retained for forward compatibility. */
 public record GuildChannel(String guildId, String id, String name, int rawType, String parentId,
-                           int position, List<PermissionOverwrite> permissionOverwrites) {
+                           int position, List<PermissionOverwrite> permissionOverwrites) implements ISnowflake {
     public GuildChannel {
         Json.id(guildId); Json.id(id); Objects.requireNonNull(name);
         if (parentId != null) Json.id(parentId);
         permissionOverwrites = List.copyOf(permissionOverwrites);
     }
-    public ChannelType getType() { return ChannelType.fromValue(rawType); }
+    public net.guneyilmaz0.micup4j.entities.channel.ChannelType getType() { return ChannelType.fromValue(rawType); }
+    @Override public String getId() { return id; }
+    public String getName() { return name; }
+    public String getAsMention() { return "<#" + id + ">"; }
     public boolean canHaveMessages() { return rawType == 0 || rawType == 2 || rawType == 5; }
     public static GuildChannel fromJson(String guildId, JsonNode data) {
         if (data.hasNonNull("guild_id") && !guildId.equals(data.path("guild_id").asText()))

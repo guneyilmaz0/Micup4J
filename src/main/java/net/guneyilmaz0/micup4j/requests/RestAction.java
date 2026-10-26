@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.*;
 
 /** A lazy action. Each execution creates a new request; cancellation propagates through composition. */
-public final class RestAction<T> {
+public class RestAction<T> {
     private final Supplier<CompletableFuture<T>> operation;
     public RestAction(Supplier<CompletableFuture<T>> operation) { this.operation = Objects.requireNonNull(operation); }
     public CompletableFuture<T> submit() {
