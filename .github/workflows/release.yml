@@ -1,0 +1,51 @@
+name: Release
+
+# Runs when a version tag is pushed. It verifies the release, checks that two clean builds produce identical JARs,
+# builds the signed Maven Central bundle and opens a draft GitHub release. Publishing to Maven Central stays manual.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ORG_GRADLE_PROJECT_pomLicenseName: ${{ vars.POM_LICENSE_NAME }}
+      ORG_GRADLE_PROJECT_pomLicenseUrl: ${{ vars.POM_LICENSE_URL }}
+      ORG_GRADLE_PROJECT_signingKey: ${{ secrets.SIGNING_KEY }}
+      ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.SIGNING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Check the tag matches the version
+        run: |
+          version=$(grep '^version=' gradle.properties | cut -d= -f2)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match version $version"; exit 1; }
+      - name: Verify release prerequisites
+        run: bash ./gradlew verifyRelease --no-daemon
+      - name: Check reproducibility
+        run: |
+          cat build/libs/*.sha256 > first.sha256
+          bash ./gradlew clean releaseChecksums --no-daemon
+          cat build/libs/*.sha256 > second.sha256
+          diff first.sha256 second.sha256
+      - name: Build the Maven Central bundle
+        run: bash ./gradlew centralBundle --no-daemon
+      - name: Create a draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          prerelease=""
+          case "$version" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --draft $prerelease --title "Micup4J $version" \
+            --notes-file "docs/releases/README-$version.md" \
+            build/libs/*.jar build/libs/*.sha256 build/distributions/central-bundle-*.zip

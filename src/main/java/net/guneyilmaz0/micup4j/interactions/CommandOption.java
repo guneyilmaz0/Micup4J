@@ -6,9 +6,28 @@ import java.text.Normalizer;
 import java.util.Locale;
 import java.util.Objects;
 
-/** An immutable basic slash-command value option. */
+/**
+ * A legacy immutable value option of {@link SlashCommand}.
+ *
+ * @param type        the option type
+ * @param name        1-32 lowercase characters
+ * @param description 1-100 characters
+ * @param required    whether the user must fill it
+ * @deprecated Use {@link net.guneyilmaz0.micup4j.interactions.commands.build.OptionData}; kept through 1.x.
+ */
+@Deprecated(since = "1.0.0")
 public record CommandOption(OptionType type, String name, String description, boolean required) {
+    /**
+     * Validates the option.
+     *
+     * @throws IllegalArgumentException if a value is invalid
+     */
     public CommandOption { Objects.requireNonNull(type); name = validName(name); validDescription(description); }
+    /**
+     * Returns the option payload.
+     *
+     * @return the option payload
+     */
     public ObjectNode toJson() {
         return Json.object().put("type", type.getKey()).put("name", name).put("description", description).put("required", required);
     }

@@ -6,6 +6,16 @@ import java.util.*;
 /** Computes masks only. Server-side MFA, hierarchy, visibility and timeouts remain separate checks. */
 public final class PermissionResolver {
     private PermissionResolver() {}
+    /**
+     * Computes a member's guild-level permissions: owner gets everything; otherwise the everyone role unioned with the
+     * assigned roles, and administrators get everything.
+     *
+     * @param guild  a guild snapshot with complete role state
+     * @param member the member, or {@code null} for a nonmember
+     * @return the mask
+     * @throws IllegalStateException if the guild is unavailable, its owner is unknown, or role state is incomplete
+     * @throws IllegalArgumentException if the member belongs to another guild
+     */
     public static PermissionSet guildPermissions(Guild guild, Member member) {
         Objects.requireNonNull(guild);
         if (!guild.available()) throw new IllegalStateException("Guild is unavailable");
@@ -26,6 +36,17 @@ public final class PermissionResolver {
         }
         return result.contains(Permission.ADMINISTRATOR) ? PermissionSet.ALL : result;
     }
+    /**
+     * Computes a member's permissions in a channel: the guild mask, then the everyone overwrite, the combined role
+     * overwrites and the member overwrite. Administrators bypass overwrites. A {@code null} channel returns the guild mask.
+     *
+     * @param guild   a guild snapshot with complete role state
+     * @param member  the member, or {@code null} for a nonmember
+     * @param channel the channel snapshot, taken as having complete overwrites, or {@code null}
+     * @return the mask
+     * @throws IllegalStateException if the permission state is incomplete
+     * @throws IllegalArgumentException if an entity belongs to another guild
+     */
     public static PermissionSet channelPermissions(Guild guild, Member member, GuildChannel channel) {
         if (channel != null && !guild.id().equals(channel.guildId())) throw new IllegalArgumentException("Channel belongs to another guild");
         var result = guildPermissions(guild, member);

@@ -31,6 +31,9 @@ import net.guneyilmaz0.micup4j.events.session.ShutdownEvent;
  * listeners.
  */
 public abstract class ListenerAdapter implements EventListener {
+    /** Creates an adapter whose callbacks do nothing until overridden. */
+    public ListenerAdapter() {}
+
     /**
      * Routes the event to the typed callbacks. {@link #onGenericEvent} runs first, then the most specific callbacks.
      *
@@ -257,7 +260,9 @@ public abstract class ListenerAdapter implements EventListener {
      * Called when the session is ready.
      *
      * @param event the ready event
+     * @deprecated Override {@link #onReady(net.guneyilmaz0.micup4j.events.session.ReadyEvent)}; both are called through 1.x.
      */
+    @Deprecated(since = "1.0.0")
     public void onReady(ReadyEvent event) {
     }
 
@@ -265,7 +270,10 @@ public abstract class ListenerAdapter implements EventListener {
      * Called when a message was received ({@code MESSAGE_CREATE}).
      *
      * @param event the message event
+     * @deprecated Override {@link #onMessageReceived(net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent)}; both are
+     *             called through 1.x.
      */
+    @Deprecated(since = "1.0.0")
     public void onMessageReceived(MessageReceivedEvent event) {
     }
 

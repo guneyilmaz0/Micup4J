@@ -14,6 +14,13 @@ import java.util.List;
 public final class ModalInteractionEvent extends net.guneyilmaz0.micup4j.events.InteractionCreateEvent {
     private final List<ModalMapping> values;
 
+    /**
+     * Creates the event; called by the library.
+     *
+     * @param client   the session
+     * @param sequence the dispatch sequence
+     * @param data     the {@code INTERACTION_CREATE} payload
+     */
     public ModalInteractionEvent(Micup client, long sequence, JsonNode data) {
         super(client, sequence, data);
         var parsed = new ArrayList<ModalMapping>();
@@ -31,9 +38,17 @@ public final class ModalInteractionEvent extends net.guneyilmaz0.micup4j.events.
         }
     }
 
-    /** @return the modal's custom id */
+    /**
+     * Returns the modal's custom id.
+     *
+     * @return the modal's custom id
+     */
     public String getModalId() { return getCustomId(); }
-    /** @return every submitted field in layout order */
+    /**
+     * Returns every submitted field in layout order.
+     *
+     * @return every submitted field in layout order
+     */
     public List<ModalMapping> getValues() { return values; }
 
     /**

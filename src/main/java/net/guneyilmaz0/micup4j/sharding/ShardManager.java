@@ -17,9 +17,17 @@ import java.util.Map;
  * cache and reconnect handling. Events carry their own shard through {@code event.getJDA()}.
  */
 public interface ShardManager {
-    /** @return the total shard count every session identifies with */
+    /**
+     * Returns the total shard count every session identifies with.
+     *
+     * @return the total shard count every session identifies with
+     */
     int getShardsTotal();
-    /** @return the started shards, ordered by id */
+    /**
+     * Returns the started shards, ordered by id.
+     *
+     * @return the started shards, ordered by id
+     */
     List<Micup> getShards();
     /**
      * Returns a started shard.
@@ -28,13 +36,29 @@ public interface ShardManager {
      * @return the shard, or {@code null} when it is not managed or not started yet
      */
     Micup getShardById(int id);
-    /** @return the number of shards whose status is {@code CONNECTED} */
+    /**
+     * Returns the number of shards whose status is {@code CONNECTED}.
+     *
+     * @return the number of shards whose status is {@code CONNECTED}
+     */
     int getShardsRunning();
-    /** @return the number of managed shards not started yet */
+    /**
+     * Returns the number of managed shards not started yet.
+     *
+     * @return the number of managed shards not started yet
+     */
     int getShardsQueued();
-    /** @return every managed shard id mapped to its status; queued shards are absent */
+    /**
+     * Returns every started shard id mapped to its status.
+     *
+     * @return every started shard id mapped to its status
+     */
     Map<Integer, Micup.Status> getStatuses();
-    /** @return the shared REST client */
+    /**
+     * Returns the shared REST client.
+     *
+     * @return the shared REST client
+     */
     RestClient getRestClient();
 
     /**
@@ -52,9 +76,17 @@ public interface ShardManager {
      * @return the guild, or {@code null} when uncached or its shard is not running here
      */
     Guild getGuildById(String id);
-    /** @return the cached guilds of every shard */
+    /**
+     * Returns the cached guilds of every shard.
+     *
+     * @return the cached guilds of every shard
+     */
     List<Guild> getGuilds();
-    /** @return the mean heartbeat latency of connected shards in milliseconds, or -1 */
+    /**
+     * Returns the mean heartbeat latency of connected shards in milliseconds, or -1.
+     *
+     * @return the mean heartbeat latency of connected shards in milliseconds, or -1
+     */
     double getAverageGatewayPing();
 
     /**
@@ -66,9 +98,17 @@ public interface ShardManager {
      */
     RestAction<User> retrieveUserById(String id);
 
-    /** Sets the status of every shard, including shards started later. */
+    /**
+     * Sets the status of every shard, including shards started later.
+     *
+     * @param status the status
+     */
     void setStatus(OnlineStatus status);
-    /** Sets the activity of every shard, including shards started later; {@code null} clears it. */
+    /**
+     * Sets the activity of every shard, including shards started later.
+     *
+     * @param activity the activity, or {@code null} to clear it
+     */
     void setActivity(Activity activity);
 
     /**

@@ -11,9 +11,28 @@ import java.util.concurrent.CompletableFuture;
 /** A lazy autocomplete response with up to 25 correctly typed choices. Empty responses are valid. */
 public final class AutoCompleteCallbackAction extends RestAction<Void> {
     private final State state;
+    /**
+     * Creates the action; prefer {@code event.replyChoices(...)}.
+     *
+     * @param event   the autocomplete interaction
+     * @param choices the initial choices
+     */
     public AutoCompleteCallbackAction(CommandAutoCompleteInteractionEvent event, Collection<Command.Choice> choices) { this(new State(event, choices)); }
     private AutoCompleteCallbackAction(State state) { super(state::execute); this.state = state; }
+    /**
+     * Adds suggestions.
+     *
+     * @param choices the choices
+     * @return this action
+     */
     public AutoCompleteCallbackAction addChoices(Command.Choice... choices) { return addChoices(Arrays.asList(choices)); }
+    /**
+     * Adds suggestions.
+     *
+     * @param choices the choices; at most 25 in total
+     * @return this action
+     * @throws IllegalArgumentException if there would be more than 25
+     */
     public AutoCompleteCallbackAction addChoices(Collection<Command.Choice> choices) { state.add(choices); return this; }
     private static final class State {
         final CommandAutoCompleteInteractionEvent event;

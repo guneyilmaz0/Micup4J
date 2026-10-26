@@ -16,6 +16,11 @@ import java.util.List;
  * @param indexing         whether the index is still being built, in which case the page is empty; retry later
  */
 public record MemberSearchResult(String guildId, List<Entry> members, int totalResultCount, boolean indexing) {
+    /**
+     * Validates the guild id and copies the page.
+     *
+     * @throws IllegalArgumentException if the guild id is invalid
+     */
     public MemberSearchResult { Json.id(guildId); members = List.copyOf(members); }
 
     /**
@@ -44,9 +49,18 @@ public record MemberSearchResult(String guildId, List<Entry> members, int totalR
     public record Entry(String guildId, String userId, String username, String discriminator, String globalName,
                         String nickname, List<String> roleIds, Instant joinedAt, boolean bot, Integer joinSourceType,
                         String sourceInviteCode, String inviterId) implements ISnowflake {
+        /**
+         * Validates the ids and copies the role list.
+         *
+         * @throws IllegalArgumentException if an id is invalid
+         */
         public Entry { Json.id(guildId); Json.id(userId); roleIds = List.copyOf(roleIds); }
         @Override public String getId() { return userId; }
-        /** @return the nickname, else the global name, else the username */
+        /**
+         * Returns the nickname, else the global name, else the username.
+         *
+         * @return the nickname, else the global name, else the username
+         */
         public String getEffectiveName() { return nickname != null ? nickname : globalName != null ? globalName : username; }
     }
 

@@ -28,11 +28,41 @@ public abstract sealed class SelectMenu implements ItemComponent, ActionHandle p
 
     @Override public String getId() { return id; }
     @Override public int getMaxPerRow() { return 5; }
+    /**
+     * Returns the placeholder, or {@code null}.
+     *
+     * @return the placeholder, or {@code null}
+     */
     public String getPlaceholder() { return placeholder; }
+    /**
+     * Returns the minimum number of values.
+     *
+     * @return the minimum number of values
+     */
     public int getMinValues() { return minValues; }
+    /**
+     * Returns the maximum number of values.
+     *
+     * @return the maximum number of values
+     */
     public int getMaxValues() { return maxValues; }
+    /**
+     * Returns whether the menu refuses input.
+     *
+     * @return whether the menu refuses input
+     */
     public boolean isDisabled() { return disabled; }
+    /**
+     * Returns a disabled copy.
+     *
+     * @return a disabled copy
+     */
     public SelectMenu asDisabled() { return withDisabled(true); }
+    /**
+     * Returns an enabled copy.
+     *
+     * @return an enabled copy
+     */
     public SelectMenu asEnabled() { return withDisabled(false); }
 
     /**
@@ -50,7 +80,12 @@ public abstract sealed class SelectMenu implements ItemComponent, ActionHandle p
         return node;
     }
 
-    /** Fluent configuration shared by the select menu builders. */
+    /**
+     * Fluent configuration shared by the select menu builders.
+     *
+     * @param <T> the menu type
+     * @param <B> the builder type
+     */
     @SuppressWarnings("unchecked")
     public abstract static sealed class Builder<T extends SelectMenu, B extends Builder<T, B>> permits StringSelectMenu.Builder, EntitySelectMenu.Builder {
         String id, placeholder;
@@ -58,15 +93,57 @@ public abstract sealed class SelectMenu implements ItemComponent, ActionHandle p
         boolean disabled;
 
         Builder(String id) { this.id = ComponentChecks.customId(id); }
+        /**
+         * Sets the custom id.
+         *
+         * @param id 1-100 characters
+         * @return this builder
+         */
         public B setId(String id) { this.id = ComponentChecks.customId(id); return (B) this; }
+        /**
+         * Sets the placeholder.
+         *
+         * @param placeholder at most 150 characters, or {@code null}
+         * @return this builder
+         */
         public B setPlaceholder(String placeholder) {
             if (placeholder != null) ComponentChecks.length("Placeholder", placeholder, 0, PLACEHOLDER_MAX_LENGTH);
             this.placeholder = placeholder; return (B) this;
         }
+        /**
+         * Sets the minimum number of values.
+         *
+         * @param minValues 0-25
+         * @return this builder
+         */
         public B setMinValues(int minValues) { this.minValues = minValues; return (B) this; }
+        /**
+         * Sets the maximum number of values.
+         *
+         * @param maxValues 1-25
+         * @return this builder
+         */
         public B setMaxValues(int maxValues) { this.maxValues = maxValues; return (B) this; }
+        /**
+         * Sets both value bounds.
+         *
+         * @param min the minimum number of values
+         * @param max the maximum number of values
+         * @return this builder
+         */
         public B setRequiredRange(int min, int max) { this.minValues = min; this.maxValues = max; return (B) this; }
+        /**
+         * Sets whether the menu refuses input.
+         *
+         * @param disabled the flag
+         * @return this builder
+         */
         public B setDisabled(boolean disabled) { this.disabled = disabled; return (B) this; }
+        /**
+         * Returns the custom id.
+         *
+         * @return the custom id
+         */
         public String getId() { return id; }
 
         /**

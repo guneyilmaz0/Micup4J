@@ -5,12 +5,29 @@ import java.time.Instant;
 
 /** JDA-style import location; validation follows Micup's documented embed limits. */
 public class EmbedBuilder extends net.guneyilmaz0.micup4j.entities.EmbedBuilder {
+    /** Creates an empty builder. */
     public EmbedBuilder() {}
+    /**
+     * Creates a builder copying a built embed.
+     *
+     * @param embed the embed to copy
+     */
     public EmbedBuilder(MessageEmbed embed) { super(embed); }
+    /**
+     * Creates a builder copying another builder.
+     *
+     * @param builder the builder to copy
+     */
     public EmbedBuilder(EmbedBuilder builder) { super(builder); }
     @Override public EmbedBuilder setTitle(String title) { super.setTitle(title); return this; }
     @Override public EmbedBuilder setTitle(String title, String url) { super.setTitle(title, url); return this; }
     @Override public EmbedBuilder setDescription(String value) { super.setDescription(value); return this; }
+    /**
+     * Sets the description, as JDA's {@code CharSequence} overload.
+     *
+     * @param value the description, or {@code null} to clear it
+     * @return this builder
+     */
     public EmbedBuilder setDescription(CharSequence value) { return setDescription(value == null ? null : value.toString()); }
     @Override public EmbedBuilder appendDescription(CharSequence value) { super.appendDescription(value); return this; }
     @Override public EmbedBuilder setColor(int color) { super.setColor(color); return this; }

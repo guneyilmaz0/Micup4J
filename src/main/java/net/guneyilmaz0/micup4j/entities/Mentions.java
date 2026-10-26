@@ -20,6 +20,13 @@ public final class Mentions {
     private final List<GuildChannel> channels;
     private final boolean everyone;
 
+    /**
+     * Creates the view from a message payload; called by the library.
+     *
+     * @param client  the session
+     * @param guildId the message's guild, or {@code null} outside a guild
+     * @param data    the message payload
+     */
     public Mentions(Micup client, String guildId, JsonNode data) {
         this.client = Objects.requireNonNull(client); this.guildId = guildId;
         everyone = data.path("mention_everyone").asBoolean();
@@ -41,16 +48,69 @@ public final class Mentions {
         roles = guild == null ? List.of() : resolve(ordered(roleIds, content, "@&"), guild::getRoleById);
         channels = guild == null ? List.of() : resolve(ordered(channelIds, content, "#"), guild::getChannelById);
     }
+    /**
+     * Returns the session.
+     *
+     * @return the session
+     */
     public Micup getJDA() { return client; }
+    /**
+     * Returns the mentioned users, in text order.
+     *
+     * @return the mentioned users, in text order
+     */
     public List<User> getUsers() { return users; }
+    /**
+     * Returns the mentioned members found in the cache, in text order.
+     *
+     * @return the mentioned members found in the cache, in text order
+     */
     public List<Member> getMembers() { return members; }
+    /**
+     * Returns the mentioned roles found in the cache, in text order.
+     *
+     * @return the mentioned roles found in the cache, in text order
+     */
     public List<Role> getRoles() { return roles; }
+    /**
+     * Returns the mentioned channels found in the cache, in text order.
+     *
+     * @return the mentioned channels found in the cache, in text order
+     */
     public List<GuildChannel> getChannels() { return channels; }
+    /**
+     * Returns whether the message mentions everyone or here.
+     *
+     * @return whether the message mentions everyone or here
+     */
     public boolean mentionsEveryone() { return everyone; }
+    /**
+     * Returns whether a user is mentioned.
+     *
+     * @param user the user
+     * @return {@code true} if mentioned
+     */
     public boolean isMentioned(User user) { return users.stream().anyMatch(value -> value.id().equals(user.id())); }
+    /**
+     * Returns whether a member is mentioned.
+     *
+     * @param member the member
+     * @return {@code true} if mentioned
+     */
     public boolean isMentioned(Member member) { return isMentioned(member.user()); }
+    /**
+     * Returns whether a role is actively mentioned.
+     *
+     * @param role the role
+     * @return {@code true} if mentioned
+     */
     public boolean isMentioned(Role role) { return activeRoleIds.contains(role.id()); }
-    /** Explicit lazy HTTP lookup for at most 100 active user mentions; never called by the getters. */
+    /**
+     * Retrieves the mentioned users' memberships over REST, one request per user. Never called by the getters.
+     *
+     * @return an action completing with the members in text order; empty outside a guild
+     * @throws IllegalStateException if more than 100 users are mentioned
+     */
     public RestAction<List<Member>> retrieveMembers() {
         if (guildId == null) return new RestAction<>(() -> java.util.concurrent.CompletableFuture.completedFuture(List.of()));
         if (users.size() > 100) throw new IllegalStateException("Mention member retrieval is limited to 100 users");

@@ -49,11 +49,30 @@ public final class Modal {
      */
     public static Builder create(String customId, String title) { return new Builder(customId, title); }
 
+    /**
+     * Returns the modal's custom id.
+     *
+     * @return the modal's custom id
+     */
     public String getId() { return id; }
+    /**
+     * Returns the title.
+     *
+     * @return the title
+     */
     public String getTitle() { return title; }
+    /**
+     * Returns the rows.
+     *
+     * @return the rows
+     */
     public List<LayoutComponent> getComponents() { return components; }
 
-    /** @return the modal callback data */
+    /**
+     * Returns the modal callback data.
+     *
+     * @return the modal callback data
+     */
     public ObjectNode toJson() {
         var node = Json.object().put("custom_id", id).put("title", title);
         var array = node.putArray("components");
@@ -67,13 +86,53 @@ public final class Modal {
         private final List<LayoutComponent> components = new ArrayList<>();
 
         Builder(String id, String title) { this.id = id; this.title = title; }
+        /**
+         * Sets the custom id.
+         *
+         * @param id 1-100 characters
+         * @return this builder
+         */
         public Builder setId(String id) { this.id = id; return this; }
+        /**
+         * Sets the title.
+         *
+         * @param title 1-45 characters
+         * @return this builder
+         */
         public Builder setTitle(String title) { this.title = title; return this; }
-        /** Adds one row per text input. */
+        /**
+         * Adds one row holding a text input.
+         *
+         * @param components the row's components; exactly one text input
+         * @return this builder
+         */
         public Builder addActionRow(ItemComponent... components) { return addComponents(ActionRow.of(components)); }
+        /**
+         * Adds rows.
+         *
+         * @param rows the rows
+         * @return this builder
+         */
         public Builder addComponents(LayoutComponent... rows) { return addComponents(Arrays.asList(rows)); }
+        /**
+         * Adds rows.
+         *
+         * @param rows the rows; 1-5 in total
+         * @return this builder
+         */
         public Builder addComponents(Collection<? extends LayoutComponent> rows) { components.addAll(rows); return this; }
+        /**
+         * Returns the mutable row list.
+         *
+         * @return the mutable row list
+         */
         public List<LayoutComponent> getComponents() { return components; }
+        /**
+         * Builds the immutable modal.
+         *
+         * @return the modal
+         * @throws IllegalArgumentException if the modal violates Micup's limits
+         */
         public Modal build() { return new Modal(id, title, components); }
     }
 }

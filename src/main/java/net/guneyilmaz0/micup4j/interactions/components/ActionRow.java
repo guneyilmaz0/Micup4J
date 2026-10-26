@@ -85,17 +85,33 @@ public final class ActionRow implements LayoutComponent {
     @Override public boolean isMessageCompatible() { return components.stream().allMatch(Component::isMessageCompatible); }
     @Override public boolean isModalCompatible() { return components.size() == 1 && components.getFirst().isModalCompatible(); }
 
-    /** @return the buttons of this row */
+    /**
+     * Returns the buttons of this row.
+     *
+     * @return the buttons of this row
+     */
     public List<Button> getButtons() { return components.stream().filter(Button.class::isInstance).map(Button.class::cast).toList(); }
 
-    /** @return the action ids in this row, link buttons excluded */
+    /**
+     * Returns the custom ids in this row, link buttons excluded.
+     *
+     * @return the custom ids in this row, link buttons excluded
+     */
     public List<String> getActionIds() {
         return components.stream().filter(ActionHandle.class::isInstance).map(c -> ((ActionHandle) c).getId()).filter(Objects::nonNull).toList();
     }
 
-    /** @return a copy of this row with every component disabled */
+    /**
+     * Returns a copy of this row with every component disabled.
+     *
+     * @return a copy of this row with every component disabled
+     */
     public ActionRow asDisabled() { return withDisabled(true); }
-    /** @return a copy of this row with every component enabled */
+    /**
+     * Returns a copy of this row with every component enabled.
+     *
+     * @return a copy of this row with every component enabled
+     */
     public ActionRow asEnabled() { return withDisabled(false); }
 
     /**

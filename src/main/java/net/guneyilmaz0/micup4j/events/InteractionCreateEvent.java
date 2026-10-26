@@ -92,12 +92,20 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
         return interactionType;
     }
 
-    /** Returns the invoked command name, or an empty string for non-command interactions. */
+    /**
+     * Returns the invoked command name, or an empty string for non-command interactions.
+     *
+     * @return the invoked command name, or an empty string for non-command interactions
+     */
     public String getName() {
         return name;
     }
 
-    /** Returns the component custom id, or an empty string for interactions without one. */
+    /**
+     * Returns the component or modal custom id, or an empty string for interactions without one.
+     *
+     * @return the component or modal custom id, or an empty string for interactions without one
+     */
     public String getCustomId() {
         return customId;
     }
@@ -116,11 +124,19 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
      * @return the hook; the same instance on every call
      */
     public net.guneyilmaz0.micup4j.interactions.InteractionHook getHook() { return hook; }
-    /** Independent view: cancelling a hook action cannot cancel the initial acknowledgement. */
+    /**
+     * Returns an independent view of the initial acknowledgement; cancelling it cannot cancel the acknowledgement.
+     *
+     * @return a future completing when the initial response succeeded
+     */
     public CompletableFuture<Void> acknowledgement() {
         return acknowledged.get() ? acknowledgedResponse.copy() : CompletableFuture.failedFuture(new IllegalStateException("Interaction has not been acknowledged"));
     }
-    /** Returns the guild id, or {@code null} when the interaction did not happen in a guild. */
+    /**
+     * Returns the guild id, or {@code null} when the interaction did not happen in a guild.
+     *
+     * @return the guild id, or {@code null} when the interaction did not happen in a guild
+     */
     public String getGuildId() { return guildId; }
     /**
      * Returns whether the interaction happened in a guild.
@@ -165,9 +181,10 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
         return new net.guneyilmaz0.micup4j.entities.MessageChannel(getMicup(), channelId, guildId);
     }
     /**
-     * Returns the scalar options of the selected subcommand, or of the command itself.
-     * The list is built on first use and the same immutable instance is returned afterwards.
+     * Returns the scalar options of the selected subcommand, or of the command itself. The list is built on first use and
+     * the same immutable instance is returned afterwards.
      *
+     * @return the options
      * @throws IllegalArgumentException if any selected option has no scalar value
      */
     public java.util.List<net.guneyilmaz0.micup4j.interactions.commands.OptionMapping> getOptions() {
@@ -181,8 +198,10 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
         return result;
     }
     /**
-     * Scalar options on the selected subcommand, or the command itself.
-     * Returns the event's internal node without copying: callers must treat it as read-only and must not log it.
+     * Returns the scalar options of the selected subcommand, or the command itself, without copying. Callers must treat
+     * the node as read-only and must not log it.
+     *
+     * @return the internal options node
      */
     protected JsonNode selectedOptions() {
         return selected;
@@ -213,9 +232,11 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
                 + (subcommandName == null ? "" : " " + subcommandName);
     }
     /**
-     * Returns the selected option with the given name, or {@code null} when absent.
-     * Reuses the cached {@link #getOptions()} list when it was already built; otherwise only the matching option is
-     * mapped, so a malformed unrelated option does not cause a failure.
+     * Returns the selected option with the given name. Reuses the cached {@link #getOptions()} list when it was already
+     * built; otherwise only the matching option is mapped, so a malformed unrelated option does not cause a failure.
+     *
+     * @param name the option name
+     * @return the option, or {@code null} when absent
      */
     public net.guneyilmaz0.micup4j.interactions.commands.OptionMapping getOption(String name) {
         java.util.Objects.requireNonNull(name);
@@ -287,7 +308,12 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
         return new net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction(this, 4, body);
     }
 
-    /** Returns a copied raw option value; absent options are represented by an empty Optional. */
+    /**
+     * Returns a copied raw option value.
+     *
+     * @param name the option name
+     * @return the value, or empty when the option is absent
+     */
     public java.util.Optional<JsonNode> getOptionValue(String name) {
         java.util.Objects.requireNonNull(name);
         for (JsonNode option : selected)
@@ -376,7 +402,13 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
         return editOriginal(Json.object().put("content", content));
     }
 
-    /** Edits a deferred response with a message payload, including embeds or components. */
+    /**
+     * Edits the original response with a message payload, including embeds or components. Does not wait for the
+     * acknowledgement; prefer {@code getHook().editOriginal(...)}.
+     *
+     * @param message the message payload
+     * @return the raw edited message
+     */
     public RestAction<JsonNode> editOriginal(JsonNode message) {
         return getMicup().getRestClient().request("PATCH", webhook() + "/messages/@original", message, false);
     }

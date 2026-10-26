@@ -11,7 +11,11 @@ import java.util.Collection;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-/** Shared lazy message payload builder. Mutation stops on the first execution that passes validation. */
+/**
+ * Shared lazy message payload builder. Mutation stops on the first execution that passes validation.
+ *
+ * @param <A> the concrete action type, returned by fluent setters
+ */
 public abstract class MessageAction<A extends MessageAction<A>> extends RestAction<Message> {
     private final State state;
     /**

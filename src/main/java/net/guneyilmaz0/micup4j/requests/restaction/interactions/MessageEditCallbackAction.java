@@ -45,12 +45,49 @@ public final class MessageEditCallbackAction extends RestAction<InteractionHook>
 
     private void editable() { if (callbackType == 6) throw new IllegalStateException("A deferred edit carries no message changes; use the hook"); }
 
+    /**
+     * Replaces the content.
+     *
+     * @param content the content; {@code null} clears it
+     * @return this action
+     * @throws IllegalStateException for a deferred edit or after submission
+     */
     public MessageEditCallbackAction setContent(String content) { editable(); body.setContent(content); return this; }
+    /**
+     * Replaces the embeds.
+     *
+     * @param embeds at most 10 embeds
+     * @return this action
+     */
     public MessageEditCallbackAction setEmbeds(MessageEmbed... embeds) { return setEmbeds(Arrays.asList(embeds)); }
+    /**
+     * Replaces the embeds.
+     *
+     * @param embeds at most 10 embeds
+     * @return this action
+     * @throws IllegalStateException for a deferred edit or after submission
+     */
     public MessageEditCallbackAction setEmbeds(Collection<? extends MessageEmbed> embeds) { editable(); body.setEmbeds(embeds, false); return this; }
+    /**
+     * Replaces the components; none removes them.
+     *
+     * @param rows the rows
+     * @return this action
+     */
     public MessageEditCallbackAction setComponents(LayoutComponent... rows) { return setComponents(Arrays.asList(rows)); }
-    /** An empty collection removes every component from the message. */
+    /**
+     * Replaces the components; an empty collection removes them.
+     *
+     * @param rows at most five message rows
+     * @return this action
+     * @throws IllegalStateException for a deferred edit or after submission
+     */
     public MessageEditCallbackAction setComponents(Collection<? extends LayoutComponent> rows) { editable(); body.setComponents(rows); return this; }
-    /** Replaces the components with a single row. */
+    /**
+     * Replaces the components with a single row.
+     *
+     * @param components the row's components
+     * @return this action
+     */
     public MessageEditCallbackAction setActionRow(ItemComponent... components) { return setComponents(ActionRow.of(components)); }
 }

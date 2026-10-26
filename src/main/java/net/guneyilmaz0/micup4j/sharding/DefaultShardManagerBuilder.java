@@ -44,9 +44,21 @@ public final class DefaultShardManagerBuilder {
         this.token = token.strip(); this.light = light;
     }
 
-    /** Shards with bounded entity caches, like {@link MicupBuilder#createDefault(String)}. */
+    /**
+     * Creates a builder for shards with bounded entity caches, as {@link MicupBuilder#createDefault(String)}.
+     *
+     * @param token the raw bot token
+     * @return the builder
+     * @throws IllegalArgumentException if the token format is invalid
+     */
     public static DefaultShardManagerBuilder createDefault(String token) { return new DefaultShardManagerBuilder(token, false); }
-    /** Shards without entity caches, like {@link MicupBuilder#createLight(String)}. */
+    /**
+     * Creates a builder for shards without entity caches, as {@link MicupBuilder#createLight(String)}.
+     *
+     * @param token the raw bot token
+     * @return the builder
+     * @throws IllegalArgumentException if the token format is invalid
+     */
     public static DefaultShardManagerBuilder createLight(String token) { return new DefaultShardManagerBuilder(token, true); }
 
     /**
@@ -84,16 +96,68 @@ public final class DefaultShardManagerBuilder {
         return this;
     }
 
-    /** Listeners shared by every shard; use {@code event.getJDA()} to tell shards apart. */
+    /**
+     * Adds listeners shared by every shard; use {@code event.getJDA()} to tell shards apart.
+     *
+     * @param values the listeners
+     * @return this builder
+     */
     public DefaultShardManagerBuilder addEventListeners(EventListener... values) { listeners.addAll(Arrays.asList(values)); return this; }
-    /** Creates one listener per shard, as JDA's {@code addEventListenerProvider}. */
+    /**
+     * Creates one listener per shard, as JDA's {@code addEventListenerProvider}.
+     *
+     * @param provider receives the shard id and returns that shard's listener
+     * @return this builder
+     */
     public DefaultShardManagerBuilder addEventListenerProvider(IntFunction<? extends EventListener> provider) { providers.add(Objects.requireNonNull(provider)); return this; }
+    /**
+     * Sets the Micup instance every shard discovers; see {@link MicupBuilder#setInstanceOrigin(URI)}.
+     *
+     * @param origin the instance origin
+     * @return this builder
+     */
     public DefaultShardManagerBuilder setInstanceOrigin(URI origin) { settings.add(b -> b.setInstanceOrigin(origin)); return this; }
+    /**
+     * Sets dispatch names every shard ignores; see {@link MicupBuilder#setIgnoredEvents(String...)}.
+     *
+     * @param names the dispatch names
+     * @return this builder
+     */
     public DefaultShardManagerBuilder setIgnoredEvents(String... names) { settings.add(b -> b.setIgnoredEvents(names)); return this; }
+    /**
+     * Sets every shard's Gateway policy.
+     *
+     * @param config the policy
+     * @return this builder
+     */
     public DefaultShardManagerBuilder setGatewayConfig(GatewayConfig config) { settings.add(b -> b.setGatewayConfig(config)); return this; }
+    /**
+     * Sets every shard's entity cache bounds.
+     *
+     * @param policy the policy
+     * @return this builder
+     */
     public DefaultShardManagerBuilder setCachePolicy(CachePolicy policy) { settings.add(b -> b.setCachePolicy(policy)); return this; }
+    /**
+     * Sets the status every shard starts with.
+     *
+     * @param status the status
+     * @return this builder
+     */
     public DefaultShardManagerBuilder setStatus(OnlineStatus status) { settings.add(b -> b.setStatus(status)); return this; }
+    /**
+     * Sets the activity every shard starts with.
+     *
+     * @param activity the activity, or {@code null}
+     * @return this builder
+     */
     public DefaultShardManagerBuilder setActivity(Activity activity) { settings.add(b -> b.setActivity(activity)); return this; }
+    /**
+     * Sets whether every shard starts as away.
+     *
+     * @param idle the away flag
+     * @return this builder
+     */
     public DefaultShardManagerBuilder setIdle(boolean idle) { settings.add(b -> b.setIdle(idle)); return this; }
 
     /**
@@ -136,7 +200,12 @@ public final class DefaultShardManagerBuilder {
      */
     public DefaultShardManagerBuilder setSessionStartGate(SessionStartGate gate) { this.gate = Objects.requireNonNull(gate); return this; }
 
-    /** Receives shard failures and start timeouts. */
+    /**
+     * Receives shard failures and start timeouts, and is installed on every shard.
+     *
+     * @param handler the handler
+     * @return this builder
+     */
     public DefaultShardManagerBuilder setErrorHandler(Consumer<Throwable> handler) {
         errorHandler = Objects.requireNonNull(handler); settings.add(b -> b.setErrorHandler(handler)); return this;
     }

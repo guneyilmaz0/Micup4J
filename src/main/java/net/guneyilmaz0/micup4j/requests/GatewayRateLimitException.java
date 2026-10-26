@@ -4,6 +4,7 @@ import java.time.Duration;
 
 /** A Gateway command was refused by its server-side budget, for example a complete member list within 30 seconds. */
 public final class GatewayRateLimitException extends RuntimeException {
+    /** How long until the command may be retried. */
     private final Duration retryAfter;
 
     /**

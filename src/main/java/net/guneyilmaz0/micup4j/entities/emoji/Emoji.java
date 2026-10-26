@@ -12,6 +12,11 @@ import net.guneyilmaz0.micup4j.internal.Json;
  * @param animated whether a custom emoji is animated; always {@code false} for Unicode
  */
 public record Emoji(String name, String id, boolean animated) {
+    /**
+     * Validates the emoji.
+     *
+     * @throws IllegalArgumentException if the name is blank, the id is invalid, or a Unicode emoji is animated
+     */
     public Emoji {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Emoji name is required");
         if (id != null) Json.id(id);
@@ -46,13 +51,36 @@ public record Emoji(String name, String id, boolean animated) {
      */
     public static Emoji fromCustom(String name, long id, boolean animated) { return fromCustom(name, Long.toUnsignedString(id), animated); }
 
+    /**
+     * Returns the Unicode sequence or custom name.
+     *
+     * @return the Unicode sequence or custom name
+     */
     public String getName() { return name; }
+    /**
+     * Returns the custom emoji id, or {@code null} for a Unicode emoji.
+     *
+     * @return the custom emoji id, or {@code null} for a Unicode emoji
+     */
     public String getId() { return id; }
+    /**
+     * Returns whether a custom emoji is animated.
+     *
+     * @return whether a custom emoji is animated
+     */
     public boolean isAnimated() { return animated; }
-    /** @return {@code <:name:id>}, {@code <a:name:id>} or the Unicode sequence */
+    /**
+     * Returns {@code <:name:id>}, {@code <a:name:id>} or the Unicode sequence.
+     *
+     * @return {@code <:name:id>}, {@code <a:name:id>} or the Unicode sequence
+     */
     public String getFormatted() { return id == null ? name : "<" + (animated ? "a" : "") + ":" + name + ":" + id + ">"; }
 
-    /** @return the component emoji object */
+    /**
+     * Returns a component emoji object.
+     *
+     * @return a component emoji object
+     */
     public ObjectNode toJson() {
         var node = Json.object().put("name", name).put("animated", animated);
         if (id == null) node.putNull("id"); else node.put("id", id);

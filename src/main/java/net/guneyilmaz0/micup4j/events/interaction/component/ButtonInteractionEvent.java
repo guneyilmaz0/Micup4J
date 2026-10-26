@@ -8,9 +8,20 @@ import net.guneyilmaz0.micup4j.interactions.components.buttons.Button;
 
 /** A button click, modelled on JDA's {@code ButtonInteractionEvent}. */
 public final class ButtonInteractionEvent extends GenericComponentInteractionCreateEvent {
+    /**
+     * Creates the event; called by the library.
+     *
+     * @param client   the session
+     * @param sequence the dispatch sequence
+     * @param data     the {@code INTERACTION_CREATE} payload
+     */
     public ButtonInteractionEvent(Micup client, long sequence, JsonNode data) { super(client, sequence, data); }
 
-    /** @return the clicked button, found on the message, or {@code null} when the payload lacks it */
+    /**
+     * Returns the clicked button, found on the message, or {@code null} when the payload lacks it.
+     *
+     * @return the clicked button, found on the message, or {@code null} when the payload lacks it
+     */
     public Button getButton() { return getComponent() instanceof Button button ? button : null; }
 
     /**

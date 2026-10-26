@@ -52,14 +52,47 @@ public final class TextInput implements ItemComponent, ActionHandle {
     @Override public boolean isMessageCompatible() { return false; }
     @Override public boolean isModalCompatible() { return true; }
     @Override public String getId() { return id; }
+    /**
+     * Returns the label shown above the field.
+     *
+     * @return the label shown above the field
+     */
     public String getLabel() { return label; }
+    /**
+     * Returns the style.
+     *
+     * @return the style
+     */
     public TextInputStyle getStyle() { return style; }
+    /**
+     * Returns the placeholder, or {@code null}.
+     *
+     * @return the placeholder, or {@code null}
+     */
     public String getPlaceHolder() { return placeholder; }
+    /**
+     * Returns the prefilled value, or {@code null}.
+     *
+     * @return the prefilled value, or {@code null}
+     */
     public String getValue() { return value; }
-    /** @return the minimum length, or -1 when unset */
+    /**
+     * Returns the minimum length, or -1 when unset.
+     *
+     * @return the minimum length, or -1 when unset
+     */
     public int getMinLength() { return minLength; }
-    /** @return the maximum length, or -1 when unset */
+    /**
+     * Returns the maximum length, or -1 when unset.
+     *
+     * @return the maximum length, or -1 when unset
+     */
     public int getMaxLength() { return maxLength; }
+    /**
+     * Returns whether the field must be filled.
+     *
+     * @return whether the field must be filled
+     */
     public boolean isRequired() { return required; }
 
     @Override public ObjectNode toJson() {
@@ -71,6 +104,13 @@ public final class TextInput implements ItemComponent, ActionHandle {
         return node;
     }
 
+    /**
+     * Parses a text input from a modal payload.
+     *
+     * @param node the text input object
+     * @return the text input
+     * @throws IllegalArgumentException if it violates Micup's limits
+     */
     public static TextInput fromJson(JsonNode node) {
         return create(node.path("custom_id").asText(), node.path("label").asText("?"), TextInputStyle.fromKey(node.path("style").asInt(1)))
                 .setPlaceholder(node.hasNonNull("placeholder") ? node.path("placeholder").asText() : null)
@@ -90,17 +130,76 @@ public final class TextInput implements ItemComponent, ActionHandle {
         private boolean required = true;
 
         Builder(String id, String label, TextInputStyle style) { this.id = id; this.label = label; this.style = style; }
+        /**
+         * Sets the custom id.
+         *
+         * @param id 1-100 characters
+         * @return this builder
+         */
         public Builder setId(String id) { this.id = id; return this; }
+        /**
+         * Sets the label.
+         *
+         * @param label 1-45 characters
+         * @return this builder
+         */
         public Builder setLabel(String label) { this.label = label; return this; }
+        /**
+         * Sets the style.
+         *
+         * @param style the style
+         * @return this builder
+         */
         public Builder setStyle(TextInputStyle style) { this.style = style; return this; }
+        /**
+         * Sets the placeholder.
+         *
+         * @param placeholder at most 100 characters, or {@code null}
+         * @return this builder
+         */
         public Builder setPlaceholder(String placeholder) { this.placeholder = placeholder; return this; }
-        /** Prefills the field. */
+        /**
+         * Prefills the field.
+         *
+         * @param value at most the maximum length, or {@code null}
+         * @return this builder
+         */
         public Builder setValue(String value) { this.value = value; return this; }
+        /**
+         * Sets the minimum length.
+         *
+         * @param minLength 0-4000, or -1 to unset
+         * @return this builder
+         */
         public Builder setMinLength(int minLength) { this.minLength = minLength; return this; }
+        /**
+         * Sets the maximum length.
+         *
+         * @param maxLength 1-4000, or -1 to unset
+         * @return this builder
+         */
         public Builder setMaxLength(int maxLength) { this.maxLength = maxLength; return this; }
+        /**
+         * Sets both length bounds.
+         *
+         * @param min the minimum length
+         * @param max the maximum length
+         * @return this builder
+         */
         public Builder setRequiredRange(int min, int max) { this.minLength = min; this.maxLength = max; return this; }
-        /** Whether the field must be filled; the default is {@code true}. */
+        /**
+         * Sets whether the field must be filled; the default is {@code true}.
+         *
+         * @param required the flag
+         * @return this builder
+         */
         public Builder setRequired(boolean required) { this.required = required; return this; }
+        /**
+         * Builds the immutable text input.
+         *
+         * @return the text input
+         * @throws IllegalArgumentException if a value violates Micup's limits
+         */
         public TextInput build() { return new TextInput(this); }
     }
 }

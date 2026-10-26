@@ -11,7 +11,11 @@ import net.guneyilmaz0.micup4j.events.message.GenericMessageEvent;
 /**
  * Fired for a Micup {@code MESSAGE_CREATE} dispatch. Prefer the JDA-style subclass
  * {@code net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent}, which is what the client delivers.
+ *
+ * @deprecated Use {@link net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent}; kept for source compatibility
+ *             through 1.x.
  */
+@Deprecated(since = "1.0.0")
 public class MessageReceivedEvent extends GenericMessageEvent {
     private final Message message;
 

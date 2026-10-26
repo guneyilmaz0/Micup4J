@@ -50,15 +50,95 @@ public final class Button implements ItemComponent, ActionHandle {
             throw new IllegalArgumentException("Button URL must be an http(s) URL without credentials");
     }
 
+    /**
+     * Creates a primary button with a label.
+     *
+     * @param id    the custom id sent back on click, 1-100 characters
+     * @param label the label, 1-80 characters
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button primary(String id, String label) { return of(ButtonStyle.PRIMARY, id, label); }
+    /**
+     * Creates a primary button showing only an emoji.
+     *
+     * @param id    the custom id sent back on click, 1-100 characters
+     * @param emoji the emoji
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button primary(String id, Emoji emoji) { return of(ButtonStyle.PRIMARY, id, null, emoji); }
+    /**
+     * Creates a secondary button with a label.
+     *
+     * @param id    the custom id sent back on click, 1-100 characters
+     * @param label the label, 1-80 characters
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button secondary(String id, String label) { return of(ButtonStyle.SECONDARY, id, label); }
+    /**
+     * Creates a secondary button showing only an emoji.
+     *
+     * @param id    the custom id sent back on click, 1-100 characters
+     * @param emoji the emoji
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button secondary(String id, Emoji emoji) { return of(ButtonStyle.SECONDARY, id, null, emoji); }
+    /**
+     * Creates a success button with a label.
+     *
+     * @param id    the custom id sent back on click, 1-100 characters
+     * @param label the label, 1-80 characters
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button success(String id, String label) { return of(ButtonStyle.SUCCESS, id, label); }
+    /**
+     * Creates a success button showing only an emoji.
+     *
+     * @param id    the custom id sent back on click, 1-100 characters
+     * @param emoji the emoji
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button success(String id, Emoji emoji) { return of(ButtonStyle.SUCCESS, id, null, emoji); }
+    /**
+     * Creates a danger button with a label.
+     *
+     * @param id    the custom id sent back on click, 1-100 characters
+     * @param label the label, 1-80 characters
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button danger(String id, String label) { return of(ButtonStyle.DANGER, id, label); }
+    /**
+     * Creates a danger button showing only an emoji.
+     *
+     * @param id    the custom id sent back on click, 1-100 characters
+     * @param emoji the emoji
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button danger(String id, Emoji emoji) { return of(ButtonStyle.DANGER, id, null, emoji); }
+    /**
+     * Creates a link button with a label. Clicks open the URL and send nothing to the bot.
+     *
+     * @param url   an http(s) URL of at most 512 characters, without credentials
+     * @param label the label, 1-80 characters
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button link(String url, String label) { return of(ButtonStyle.LINK, url, label); }
+    /**
+     * Creates a link button showing only an emoji.
+     *
+     * @param url   an http(s) URL of at most 512 characters, without credentials
+     * @param emoji the emoji
+     * @return the button
+     * @throws IllegalArgumentException if a value violates Micup's limits
+     */
     public static Button link(String url, Emoji emoji) { return of(ButtonStyle.LINK, url, null, emoji); }
 
     /**
@@ -88,20 +168,91 @@ public final class Button implements ItemComponent, ActionHandle {
 
     @Override public int getTypeRaw() { return 2; }
     @Override public String getId() { return id; }
+    /**
+     * Returns the style.
+     *
+     * @return the style
+     */
     public ButtonStyle getStyle() { return style; }
+    /**
+     * Returns the link URL, or {@code null} for action buttons.
+     *
+     * @return the link URL, or {@code null} for action buttons
+     */
     public String getUrl() { return url; }
-    /** @return the label, or an empty string for an emoji-only button */
+    /**
+     * Returns the label, or an empty string for an emoji-only button.
+     *
+     * @return the label, or an empty string for an emoji-only button
+     */
     public String getLabel() { return label == null ? "" : label; }
+    /**
+     * Returns the emoji, or {@code null}.
+     *
+     * @return the emoji, or {@code null}
+     */
     public Emoji getEmoji() { return emoji; }
+    /**
+     * Returns whether the button refuses clicks.
+     *
+     * @return whether the button refuses clicks
+     */
     public boolean isDisabled() { return disabled; }
 
+    /**
+     * Returns a copy with the disabled flag set.
+     *
+     * @param disabled whether the button refuses clicks
+     * @return the copy
+     */
     public Button withDisabled(boolean disabled) { return new Button(style, id, url, label, emoji, disabled); }
+    /**
+     * Returns a disabled copy.
+     *
+     * @return a disabled copy
+     */
     public Button asDisabled() { return withDisabled(true); }
+    /**
+     * Returns an enabled copy.
+     *
+     * @return an enabled copy
+     */
     public Button asEnabled() { return withDisabled(false); }
+    /**
+     * Returns a copy with another label.
+     *
+     * @param label the label, or {@code null} when the button has an emoji
+     * @return the copy
+     */
     public Button withLabel(String label) { return new Button(style, id, url, label, emoji, disabled); }
+    /**
+     * Returns a copy with another emoji.
+     *
+     * @param emoji the emoji, or {@code null} when the button has a label
+     * @return the copy
+     */
     public Button withEmoji(Emoji emoji) { return new Button(style, id, url, label, emoji, disabled); }
+    /**
+     * Returns a copy with another custom id.
+     *
+     * @param id the custom id; action styles only
+     * @return the copy
+     */
     public Button withId(String id) { return new Button(style, id, url, label, emoji, disabled); }
+    /**
+     * Returns a copy with another URL.
+     *
+     * @param url the URL; link buttons only
+     * @return the copy
+     */
     public Button withUrl(String url) { return new Button(style, id, url, label, emoji, disabled); }
+    /**
+     * Returns a copy with another style.
+     *
+     * @param style the style
+     * @return the copy
+     * @throws IllegalArgumentException when switching between link and action styles
+     */
     public Button withStyle(ButtonStyle style) {
         if ((style == ButtonStyle.LINK) != (this.style == ButtonStyle.LINK)) throw new IllegalArgumentException("Cannot switch between link and action styles");
         return new Button(style, id, url, label, emoji, disabled);

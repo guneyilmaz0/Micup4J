@@ -95,23 +95,58 @@ public final class FileUpload {
         return this;
     }
 
-    /** Marks the attachment as a spoiler. @return this upload */
+    /**
+     * Marks the attachment as a spoiler.
+     *
+     * @return this upload
+     */
     public FileUpload asSpoiler() { spoiler = true; return this; }
 
+    /**
+     * Returns the file name shown in the client.
+     *
+     * @return the file name shown in the client
+     */
     public String getName() { return name; }
+    /**
+     * Returns the alternative text, or {@code null}.
+     *
+     * @return the alternative text, or {@code null}
+     */
     public String getDescription() { return description; }
+    /**
+     * Returns whether the attachment is a spoiler.
+     *
+     * @return whether the attachment is a spoiler
+     */
     public boolean isSpoiler() { return spoiler; }
-    /** @return the size in bytes */
+    /**
+     * Returns the size in bytes.
+     *
+     * @return the size in bytes
+     */
     public int getSize() { return data.length; }
-    /** @return a copy of the content */
+    /**
+     * Returns a copy of the content.
+     *
+     * @return a copy of the content
+     */
     public byte[] getData() { return data.clone(); }
 
-    /** @return the media type guessed from the name, or {@code application/octet-stream} */
+    /**
+     * Returns the media type guessed from the name, or {@code application/octet-stream}.
+     *
+     * @return the media type guessed from the name, or {@code application/octet-stream}
+     */
     public String getContentType() {
         String type = java.net.URLConnection.guessContentTypeFromName(name);
         return type == null ? "application/octet-stream" : type;
     }
 
-    /** Raw bytes for the multipart encoder; not copied. Not part of the supported public API. */
+    /**
+     * Returns the raw bytes for the multipart encoder without copying. Not part of the supported public API.
+     *
+     * @return the content; must not be modified
+     */
     public byte[] rawData() { return data; }
 }

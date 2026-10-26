@@ -25,18 +25,38 @@ public class GenericComponentInteractionCreateEvent extends net.guneyilmaz0.micu
     private volatile Message message;
     private volatile List<ActionRow> rows;
 
+    /**
+     * Creates the event; called by the library.
+     *
+     * @param client   the session
+     * @param sequence the dispatch sequence
+     * @param data     the {@code INTERACTION_CREATE} payload
+     * @throws IllegalArgumentException if the payload has no custom id
+     */
     public GenericComponentInteractionCreateEvent(Micup client, long sequence, JsonNode data) {
         super(client, sequence, data);
         componentType = rawData().path("data").path("component_type").asInt();
         if (getCustomId().isEmpty()) throw new IllegalArgumentException("Component interaction has no custom id");
     }
 
-    /** @return the custom id of the used component */
+    /**
+     * Returns the custom id of the used component.
+     *
+     * @return the custom id of the used component
+     */
     public String getComponentId() { return getCustomId(); }
-    /** @return the raw component type */
+    /**
+     * Returns the raw component type.
+     *
+     * @return the raw component type
+     */
     public int getComponentTypeRaw() { return componentType; }
 
-    /** @return the message the component is on, or {@code null} when the payload has none */
+    /**
+     * Returns the message the component is on, or {@code null} when the payload has none.
+     *
+     * @return the message the component is on, or {@code null} when the payload has none
+     */
     public Message getMessage() {
         Message current = message;
         if (current == null && rawData().path("message").isObject())
@@ -44,13 +64,21 @@ public class GenericComponentInteractionCreateEvent extends net.guneyilmaz0.micu
         return current;
     }
 
-    /** @return the id of the message the component is on, or {@code null} */
+    /**
+     * Returns the id of the message the component is on, or {@code null}.
+     *
+     * @return the id of the message the component is on, or {@code null}
+     */
     public String getMessageId() {
         JsonNode node = rawData().path("message").path("id");
         return node.isTextual() ? node.asText() : null;
     }
 
-    /** @return the action rows of the message, parsed from the payload; empty when absent */
+    /**
+     * Returns the action rows of the message, parsed from the payload; empty when absent.
+     *
+     * @return the action rows of the message, parsed from the payload; empty when absent
+     */
     public List<ActionRow> getMessageComponents() {
         List<ActionRow> current = rows;
         if (current == null) {
@@ -64,7 +92,11 @@ public class GenericComponentInteractionCreateEvent extends net.guneyilmaz0.micu
         return current;
     }
 
-    /** @return the used component, found on the message, or {@code null} */
+    /**
+     * Returns the used component, found on the message, or {@code null}.
+     *
+     * @return the used component, found on the message, or {@code null}
+     */
     public ItemComponent getComponent() {
         for (ActionRow row : getMessageComponents())
             for (ItemComponent item : row.getComponents())
@@ -87,6 +119,12 @@ public class GenericComponentInteractionCreateEvent extends net.guneyilmaz0.micu
      */
     public MessageEditCallbackAction editMessage(String content) { return new MessageEditCallbackAction(this, 7).setContent(content); }
 
+    /**
+     * Edits the message embeds (callback type 7).
+     *
+     * @param embeds the new embeds
+     * @return the action
+     */
     public MessageEditCallbackAction editMessageEmbeds(MessageEmbed... embeds) { return new MessageEditCallbackAction(this, 7).setEmbeds(embeds); }
 
     /**
@@ -96,6 +134,12 @@ public class GenericComponentInteractionCreateEvent extends net.guneyilmaz0.micu
      * @return the action
      */
     public MessageEditCallbackAction editComponents(LayoutComponent... rows) { return editComponents(Arrays.asList(rows)); }
+    /**
+     * Replaces the message components (callback type 7); an empty collection removes them.
+     *
+     * @param rows the new rows
+     * @return the action
+     */
     public MessageEditCallbackAction editComponents(Collection<? extends LayoutComponent> rows) { return new MessageEditCallbackAction(this, 7).setComponents(rows); }
 
     /**

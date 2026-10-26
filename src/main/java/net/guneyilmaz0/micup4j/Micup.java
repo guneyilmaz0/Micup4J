@@ -156,9 +156,23 @@ public final class Micup implements AutoCloseable {
      * @param shardTotal the total number of shards
      */
     public record ShardInfo(int shardId, int shardTotal) {
+        /**
+         * Returns the shard id, as JDA's {@code getShardId()}.
+         *
+         * @return the zero-based shard id
+         */
         public int getShardId() { return shardId; }
+        /**
+         * Returns the total shard count, as JDA's {@code getShardTotal()}.
+         *
+         * @return the total shard count, at least 1
+         */
         public int getShardTotal() { return shardTotal; }
-        /** @return {@code [id / total]}, as JDA formats it */
+        /**
+         * Formats the shard as JDA does.
+         *
+         * @return {@code [id / total]}
+         */
         public String getShardString() { return "[" + shardId + " / " + shardTotal + "]"; }
     }
 
@@ -218,7 +232,12 @@ public final class Micup implements AutoCloseable {
         return rest;
     }
 
-    /** The instance's discovered Media Proxy base URL, including any deployment path prefix. */
+    /**
+     * Returns the instance's discovered Media Proxy base URL, including any deployment path prefix.
+     *
+     * @return the media base URL
+     * @throws IllegalStateException if discovery published no media endpoint
+     */
     public URI getMediaBase() {
         if (mediaBase == null) throw new IllegalStateException("Instance discovery did not publish a media endpoint");
         return mediaBase;
@@ -316,7 +335,12 @@ public final class Micup implements AutoCloseable {
         return new MessageChannel(this, id);
     }
 
-    /** Cached text channels only; uncached and non-text channel IDs return null. */
+    /**
+     * Returns a cached text channel. Uncached and non-text channel ids return {@code null}.
+     *
+     * @param id the channel id
+     * @return the text channel, or {@code null}
+     */
     public net.guneyilmaz0.micup4j.entities.channel.concrete.TextChannel getTextChannelById(String id) {
         GuildChannel channel = entityCache.getChannel(Json.id(id)).orElse(null);
         return channel == null || channel.rawType() != 0 ? null
@@ -343,7 +367,12 @@ public final class Micup implements AutoCloseable {
         return rest.request("GET", "/users/" + Json.id(id), null).map(data -> User.fromJson(data).withClient(this));
     }
 
-    /** Cached snapshot only; absence means uncached, not necessarily inaccessible or nonexistent. */
+    /**
+     * Returns a cached guild snapshot. A miss means uncached, not necessarily inaccessible or nonexistent.
+     *
+     * @param id the guild id
+     * @return the cached snapshot, or {@code null}
+     */
     public Guild getGuildById(String id) { return findGuildById(id).orElse(null); }
     /**
      * Returns the cached guild snapshot; see {@link #getGuildById(String)}.
@@ -352,9 +381,19 @@ public final class Micup implements AutoCloseable {
      * @return the cached snapshot, or {@code null}
      */
     public Guild getGuildById(long id) { return getGuildById(Long.toUnsignedString(id)); }
-    /** Returns the stored client-bound snapshot; repeated lookups without intervening writes return the same instance. */
+    /**
+     * Returns the stored client-bound snapshot; repeated lookups without intervening writes return the same instance.
+     *
+     * @param id the guild id
+     * @return the cached snapshot, or empty when uncached
+     */
     public Optional<Guild> findGuildById(String id) { return entityCache.getGuild(Json.id(id)); }
-    /** A lightweight ID reference for REST operations when entity caching is disabled. */
+    /**
+     * Returns the cached guild, or a lightweight id reference for REST operations when it is not cached.
+     *
+     * @param id the guild id
+     * @return a cached snapshot or an empty reference bound to this client
+     */
     public Guild getGuildReferenceById(String id) {
         Guild guild = getGuildById(id);
         return guild == null ? new Guild(Json.id(id), "", null, false, List.of(), List.of(), List.of(), false, false).withClient(this) : guild;
@@ -367,7 +406,12 @@ public final class Micup implements AutoCloseable {
      */
     public List<Guild> getGuilds() { return entityCache.getGuilds(); }
 
-    /** HTTP reads return detached snapshots and never race Gateway updates into the cache. */
+    /**
+     * Retrieves a guild over REST. HTTP reads return detached snapshots and never race Gateway updates into the cache.
+     *
+     * @param id the guild id
+     * @return an action that fetches the guild when queued
+     */
     public RestAction<Guild> retrieveGuildById(String id) {
         return rest.request("GET", "/guilds/" + Json.id(id), null).map(data -> Guild.fromJson(data).withClient(this));
     }
@@ -436,7 +480,16 @@ public final class Micup implements AutoCloseable {
         return rest.request("GET", "/guilds/" + id + "/members/@me", null).map(data -> Member.fromJson(id, data).withClient(this));
     }
 
-    /** One bounded page in ascending user-ID order. Pass the final returned ID as the next exclusive cursor. */
+    /**
+     * Retrieves one bounded page of members in ascending user-id order. Pass the last returned id as the next exclusive
+     * cursor; an empty page ends the listing.
+     *
+     * @param guildId the guild id
+     * @param limit   the page size, 1-1000
+     * @param after   the exclusive user-id cursor, or {@code null} for the first page
+     * @return an action that fetches the page when queued; it fails if the response is oversized or does not advance
+     * @throws IllegalArgumentException if the limit or an id is invalid
+     */
     public RestAction<List<Member>> retrieveMembers(String guildId, int limit, String after) {
         String id = Json.id(guildId);
         if (limit < 1 || limit > 1000) throw new IllegalArgumentException("Member page limit must be 1-1000");
@@ -566,7 +619,15 @@ public final class Micup implements AutoCloseable {
         return audited("PATCH", "/guilds/" + Json.id(guildId), body, data -> Guild.fromJson(data).withClient(this));
     }
 
-    /** Null clears the nickname. The server enforces hierarchy and permissions. Supports an audit reason. */
+    /**
+     * Changes a member's nickname. The server enforces hierarchy and permissions.
+     *
+     * @param guildId  the guild id
+     * @param userId   the member's user id
+     * @param nickname the nickname, 1-32 characters, or {@code null} to clear it
+     * @return an action that performs the change when queued; supports an audit reason
+     * @throws IllegalArgumentException if an id is invalid or the nickname is too long
+     */
     public AuditableRestAction<Member> modifyMemberNickname(String guildId, String userId, String nickname) {
         String id = Json.id(guildId);
         if (nickname != null) boundedName(nickname, 32);
@@ -618,8 +679,15 @@ public final class Micup implements AutoCloseable {
     }
 
     /**
-     * Creates a role. Null permissions copy the everyone mask; a supplied mask is stored exactly, including
+     * Creates a role with a name, color and optional permission mask. A supplied mask is stored exactly, including
      * feature-gated bits.
+     *
+     * @param guildId     the guild id
+     * @param name        the name, 1-100 characters
+     * @param color       a 24-bit RGB color
+     * @param permissions the mask, or {@code null} to copy the everyone role
+     * @return a creation action that can be configured further; supports an audit reason
+     * @throws IllegalArgumentException if a value is invalid
      */
     public RoleAction createRole(String guildId, String name, int color,
                                  net.guneyilmaz0.micup4j.permissions.PermissionSet permissions) {
@@ -697,10 +765,16 @@ public final class Micup implements AutoCloseable {
     }
 
     /**
-     * Bans a user, optionally for a limited time (a Micup extension). See {@link #ban(String, String, int, java.util.concurrent.TimeUnit)}.
+     * Bans a user, optionally for a limited time (a Micup extension). See
+     * {@link #ban(String, String, int, java.util.concurrent.TimeUnit)}.
      *
-     * @param duration the ban length, 60 seconds to 730 days, or {@code null} for a permanent ban
-     * @throws IllegalArgumentException if the duration is outside its range
+     * @param guildId           the guild id
+     * @param userId            the user id; need not be a member
+     * @param deletionTimeframe how far back to delete the user's messages, 0 for none
+     * @param unit              the unit of {@code deletionTimeframe}
+     * @param duration          the ban length, 60 seconds to 730 days, or {@code null} for a permanent ban
+     * @return an action that bans the user when queued; supports a reason
+     * @throws IllegalArgumentException if an id, the timeframe or the duration is outside its range
      */
     public AuditableRestAction<Void> ban(String guildId, String userId, int deletionTimeframe, java.util.concurrent.TimeUnit unit,
                                          Duration duration) {
@@ -748,8 +822,11 @@ public final class Micup implements AutoCloseable {
     /**
      * Times a member out until an instant; see {@link #timeoutFor(String, String, Duration)}.
      *
-     * @param until a future instant at most 365 days ahead
-     * @throws IllegalArgumentException if {@code until} is outside its range when this method is called
+     * @param guildId the guild id
+     * @param userId  the member's user id
+     * @param until   a future instant at most 365 days ahead
+     * @return an action that applies the timeout when queued; supports a reason
+     * @throws IllegalArgumentException if an id is invalid or {@code until} is outside its range when this method is called
      */
     public AuditableRestAction<Member> timeoutUntil(String guildId, String userId, Instant until) {
         var now = Instant.now();
@@ -799,8 +876,14 @@ public final class Micup implements AutoCloseable {
     }
 
     /**
-     * Replaces all commands in the given guild. Call only when command definitions change.
+     * Replaces all commands in the given guild with legacy definitions. Call only when command definitions change.
+     *
+     * @param guildId  the guild id
+     * @param commands the complete new command set
+     * @return the raw command list returned by Micup
+     * @deprecated Use {@link #updateGuildCommands(String)} with {@code Commands.slash(...)}; kept through 1.x.
      */
+    @Deprecated(since = "1.0.0")
     public RestAction<JsonNode> updateGuildCommands(String guildId, SlashCommand... commands) {
         var body = Json.MAPPER.createArrayNode();
         for (var command : commands) body.add(command.toJson());
@@ -808,8 +891,13 @@ public final class Micup implements AutoCloseable {
     }
 
     /**
-     * Replaces all global commands.
+     * Replaces all global commands with legacy definitions.
+     *
+     * @param commands the complete new command set
+     * @return the raw command list returned by Micup
+     * @deprecated Use {@link #updateCommands()} with {@code Commands.slash(...)}; kept through 1.x.
      */
+    @Deprecated(since = "1.0.0")
     public RestAction<JsonNode> updateCommands(SlashCommand... commands) {
         var body = Json.MAPPER.createArrayNode();
         for (var command : commands) body.add(command.toJson());

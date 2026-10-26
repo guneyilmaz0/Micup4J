@@ -12,8 +12,29 @@ public class MessageChannel implements net.guneyilmaz0.micup4j.entities.channel.
     private final boolean contextKnown;
     private final Integer rawType;
 
+    /**
+     * Creates a handle for a channel whose guild is unknown.
+     *
+     * @param client the session
+     * @param id     the channel id
+     */
     public MessageChannel(Micup client, String id) { this(client, id, null, false, null); }
+    /**
+     * Creates a handle for a channel in a known context.
+     *
+     * @param client  the session
+     * @param id      the channel id
+     * @param guildId the guild id, or {@code null} for a direct message
+     */
     public MessageChannel(Micup client, String id, String guildId) { this(client, id, guildId, true, null); }
+    /**
+     * Creates a handle with a known context and Micup channel type.
+     *
+     * @param client  the session
+     * @param id      the channel id
+     * @param guildId the guild id, or {@code null} for a direct message
+     * @param rawType the Micup channel type, or {@code null} when unknown
+     */
     public MessageChannel(Micup client, String id, String guildId, Integer rawType) { this(client, id, guildId, true, rawType); }
     private MessageChannel(Micup client, String id, String guildId, boolean contextKnown, Integer rawType) {
         this.contextKnown = contextKnown;
@@ -22,6 +43,11 @@ public class MessageChannel implements net.guneyilmaz0.micup4j.entities.channel.
         this.id = Json.id(id);
         this.guildId = guildId == null ? null : Json.id(guildId);
     }
+    /**
+     * Returns the session.
+     *
+     * @return the session
+     */
     public Micup getJDA() { return client; }
     public String getAsMention() { return "<#" + id + ">"; }
     public net.guneyilmaz0.micup4j.entities.channel.ChannelType getType() {

@@ -39,7 +39,11 @@ public class GenericEvent {
         return client;
     }
 
-    /** Source migration alias; this is a Micup session, never a Discord JDA instance. */
+    /**
+     * Returns the session that received the event. Named for JDA source parity.
+     *
+     * @return the session
+     */
     public Micup getJDA() { return client; }
     /**
      * Returns the dispatch sequence number. JDA parity alias of {@link #getSequence()}.

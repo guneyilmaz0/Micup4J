@@ -4,7 +4,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import net.guneyilmaz0.micup4j.internal.Json;
 import java.util.*;
 
-/** Immutable snapshot. Members and visible channels never imply a complete guild roster. */
+/**
+ * Immutable guild snapshot. Members and visible channels never imply a complete guild roster.
+ *
+ * @param id               the guild id
+ * @param name             the name
+ * @param ownerId          the owner's user id, or {@code null} when unknown
+ * @param available        whether the guild is available; unavailable guilds keep only their identity
+ * @param roles            the cached roles
+ * @param members          the observed members, a bounded subset
+ * @param channels         the channels visible to the bot
+ * @param rolesComplete    whether {@code roles} covered the last snapshot fully
+ * @param channelsComplete whether {@code channels} covered the last snapshot fully
+ * @param client           the owning session, or {@code null} for a detached snapshot
+ */
 public record Guild(String id, String name, String ownerId, boolean available,
                     List<Role> roles, List<GuildChannel> channels, List<Member> members,
                     boolean rolesComplete, boolean channelsComplete, net.guneyilmaz0.micup4j.Micup client) implements ISnowflake {

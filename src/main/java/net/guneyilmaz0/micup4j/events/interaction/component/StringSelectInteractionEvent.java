@@ -11,6 +11,13 @@ import java.util.List;
 public final class StringSelectInteractionEvent extends GenericComponentInteractionCreateEvent {
     private final List<String> values;
 
+    /**
+     * Creates the event; called by the library.
+     *
+     * @param client   the session
+     * @param sequence the dispatch sequence
+     * @param data     the {@code INTERACTION_CREATE} payload
+     */
     public StringSelectInteractionEvent(Micup client, long sequence, JsonNode data) {
         super(client, sequence, data);
         var parsed = new ArrayList<String>();
@@ -18,13 +25,25 @@ public final class StringSelectInteractionEvent extends GenericComponentInteract
         values = List.copyOf(parsed);
     }
 
-    /** @return the chosen values; Micup checked they are among the stored options */
+    /**
+     * Returns the chosen values; Micup checked they are among the stored options.
+     *
+     * @return the chosen values; Micup checked they are among the stored options
+     */
     public List<String> getValues() { return values; }
 
-    /** @return the used menu, found on the message, or {@code null} */
+    /**
+     * Returns the used menu, found on the message, or {@code null}.
+     *
+     * @return the used menu, found on the message, or {@code null}
+     */
     public StringSelectMenu getSelectMenu() { return getComponent() instanceof StringSelectMenu menu ? menu : null; }
 
-    /** @return the chosen options, or an empty list when the menu is not in the payload */
+    /**
+     * Returns the chosen options, or an empty list when the menu is not in the payload.
+     *
+     * @return the chosen options, or an empty list when the menu is not in the payload
+     */
     public List<SelectOption> getSelectedOptions() {
         StringSelectMenu menu = getSelectMenu();
         return menu == null ? List.of() : menu.getOptions().stream().filter(option -> values.contains(option.value())).toList();

@@ -23,6 +23,10 @@ public final class ModalCallbackAction extends RestAction<Void> {
         this.modal = modal;
     }
 
-    /** @return the modal this action opens */
+    /**
+     * Returns the modal this action opens.
+     *
+     * @return the modal this action opens
+     */
     public Modal getModal() { return modal; }
 }

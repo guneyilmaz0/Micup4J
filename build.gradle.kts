@@ -1,6 +1,9 @@
+import java.security.MessageDigest
+
 plugins {
     `java-library`
     `maven-publish`
+    signing
     kotlin("jvm") version "2.3.0"
 }
 
@@ -28,11 +31,19 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
 
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    // -PupdateApi accepts an intended public API change by rewriting api/Micup4J.api; see ApiSurfaceTest.
+    systemProperty("api.update", providers.gradleProperty("updateApi").isPresent.toString())
+}
 tasks.javadoc {
     (options as StandardJavadocDocletOptions).apply {
         encoding = "UTF-8"
-        addBooleanOption("Xdoclint:all,-missing", true)
+        // Every supported type and member must be documented; internals are exempt.
+        addBooleanOption("Xdoclint:all", true)
+        addBooleanOption("Xdoclint/package:-net.guneyilmaz0.micup4j.internal", true)
+        addStringOption("Xmaxwarns", "10000")
+        addBooleanOption("Werror", true)
     }
 }
 tasks.processResources {
@@ -46,6 +57,10 @@ tasks.withType<AbstractArchiveTask>().configureEach {
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
 }
+// Release metadata. The license is the maintainer's choice: pass -PpomLicenseName and -PpomLicenseUrl (or set them in
+// ~/.gradle/gradle.properties); verifyRelease refuses to continue without them.
+val pomLicenseName = providers.gradleProperty("pomLicenseName")
+val pomLicenseUrl = providers.gradleProperty("pomLicenseUrl")
 publishing {
     publications {
         create<MavenPublication>("micup4j") {
@@ -53,8 +68,70 @@ publishing {
             pom {
                 name.set("Micup4J")
                 description.set("An asynchronous Java library for Micup bots")
+                url.set("https://github.com/guneyilmaz0/Micup4J")
+                scm {
+                    url.set("https://github.com/guneyilmaz0/Micup4J")
+                    connection.set("scm:git:https://github.com/guneyilmaz0/Micup4J.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/guneyilmaz0/Micup4J.git")
+                }
+                developers { developer { id.set("guneyilmaz0"); url.set("https://github.com/guneyilmaz0") } }
+                issueManagement { system.set("GitHub"); url.set("https://github.com/guneyilmaz0/Micup4J/issues") }
+                if (pomLicenseName.isPresent && pomLicenseUrl.isPresent) licenses {
+                    license { name.set(pomLicenseName); url.set(pomLicenseUrl) }
+                }
             }
         }
+    }
+    // A local Maven layout that the Central Portal bundle is built from; nothing is uploaded by Gradle.
+    repositories { maven { name = "staging"; url = uri(layout.buildDirectory.dir("staging-deploy")) } }
+}
+
+// Signs only when an ASCII-armored key is supplied, for example through ORG_GRADLE_PROJECT_signingKey in CI.
+signing {
+    val key = providers.gradleProperty("signingKey").orNull
+    if (key != null) {
+        useInMemoryPgpKeys(key, providers.gradleProperty("signingPassword").orNull)
+        sign(publishing.publications["micup4j"])
+    }
+}
+
+val releaseArtifacts = listOf(tasks.jar, tasks.named<Jar>("sourcesJar"), tasks.named<Jar>("javadocJar"))
+tasks.register("releaseChecksums") {
+    group = "release"
+    description = "Writes SHA-256 files next to the release JARs"
+    dependsOn(releaseArtifacts)
+    doLast {
+        releaseArtifacts.map { it.get().archiveFile.get().asFile }.forEach { file ->
+            val digest = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
+            file.resolveSibling(file.name + ".sha256").writeText(digest.joinToString("") { "%02x".format(it) } + "  " + file.name + "\n")
+        }
+    }
+}
+
+tasks.register<Zip>("centralBundle") {
+    group = "release"
+    description = "Builds the Maven Central Portal upload bundle from the staging repository"
+    dependsOn("publishAllPublicationsToStagingRepository")
+    from(layout.buildDirectory.dir("staging-deploy"))
+    exclude("**/maven-metadata*")
+    archiveFileName.set("central-bundle-${project.version}.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+}
+
+tasks.register("verifyRelease") {
+    group = "release"
+    description = "Checks release prerequisites: tests, API snapshot, docs, license metadata and checksums"
+    dependsOn("check", "javadoc", "releaseChecksums")
+    val version = project.version.toString()
+    val changelog = file("CHANGELOG.md")
+    val notes = file("docs/releases/README-$version.md")
+    doLast {
+        val problems = mutableListOf<String>()
+        if (version.endsWith("SNAPSHOT")) problems += "Version $version is a snapshot"
+        if (!changelog.readText().contains("## [$version]")) problems += "CHANGELOG.md has no [$version] section"
+        if (!notes.exists()) problems += "Missing release notes ${notes.path}"
+        if (!pomLicenseName.isPresent || !pomLicenseUrl.isPresent) problems += "No license chosen: pass -PpomLicenseName and -PpomLicenseUrl"
+        check(problems.isEmpty()) { "Release is not ready:\n - " + problems.joinToString("\n - ") }
     }
 }
 

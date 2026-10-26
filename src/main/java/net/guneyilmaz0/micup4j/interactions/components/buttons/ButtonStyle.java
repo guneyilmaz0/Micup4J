@@ -2,12 +2,27 @@ package net.guneyilmaz0.micup4j.interactions.components.buttons;
 
 /** Button styles; the values match Micup's. */
 public enum ButtonStyle {
-    PRIMARY(1), SECONDARY(2), SUCCESS(3), DANGER(4), LINK(5), UNKNOWN(-1);
+    /** The main action (1). */
+    PRIMARY(1),
+    /** A secondary action (2). */
+    SECONDARY(2),
+    /** A positive action (3). */
+    SUCCESS(3),
+    /** A destructive action (4). */
+    DANGER(4),
+    /** Opens a URL and sends nothing to the bot (5). */
+    LINK(5),
+    /** An unrecognized style. */
+    UNKNOWN(-1);
 
     private final int key;
     ButtonStyle(int key) { this.key = key; }
 
-    /** @return the raw style */
+    /**
+     * Returns the Micup wire value.
+     *
+     * @return the raw style
+     */
     public int getKey() { return key; }
 
     /**

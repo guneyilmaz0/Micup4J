@@ -17,6 +17,14 @@ import java.util.List;
 public final class EntitySelectInteractionEvent extends GenericComponentInteractionCreateEvent {
     private final List<String> values;
 
+    /**
+     * Creates the event; called by the library.
+     *
+     * @param client   the session
+     * @param sequence the dispatch sequence
+     * @param data     the {@code INTERACTION_CREATE} payload
+     * @throws IllegalArgumentException if a value is not a canonical snowflake
+     */
     public EntitySelectInteractionEvent(Micup client, long sequence, JsonNode data) {
         super(client, sequence, data);
         var parsed = new ArrayList<String>();
@@ -24,7 +32,11 @@ public final class EntitySelectInteractionEvent extends GenericComponentInteract
         values = List.copyOf(parsed);
     }
 
-    /** @return the chosen entity ids */
+    /**
+     * Returns the chosen entity ids.
+     *
+     * @return the chosen entity ids
+     */
     public List<String> getValues() { return values; }
 
     // Option types 6 (user) and 8 (role) reuse the command option resolver for the select's resolved data.
@@ -35,10 +47,22 @@ public final class EntitySelectInteractionEvent extends GenericComponentInteract
 
     private boolean resolved(String kind, String id) { return rawData().path("data").path("resolved").path(kind).has(id); }
 
-    /** @return the chosen users that were resolved */
+    /**
+     * Returns the chosen users that were resolved.
+     *
+     * @return the chosen users that were resolved
+     */
     public List<User> getUsers() { return values.stream().filter(id -> resolved("users", id)).map(id -> mapping(id, 6).getAsUser()).toList(); }
-    /** @return the chosen members that were resolved */
+    /**
+     * Returns the chosen members that were resolved.
+     *
+     * @return the chosen members that were resolved
+     */
     public List<Member> getMembers() { return values.stream().filter(id -> resolved("members", id) && resolved("users", id)).map(id -> mapping(id, 6).getAsMember()).toList(); }
-    /** @return the chosen roles that were resolved */
+    /**
+     * Returns the chosen roles that were resolved.
+     *
+     * @return the chosen roles that were resolved
+     */
     public List<Role> getRoles() { return values.stream().filter(id -> resolved("roles", id)).map(id -> mapping(id, 8).getAsRole()).toList(); }
 }

@@ -9,7 +9,17 @@ public final class MicupVersion {
 
     private MicupVersion() {}
 
+    /**
+     * Returns the library version from the build.
+     *
+     * @return the version, such as {@code 1.0.0}
+     */
     public static String getVersion() { return VERSION; }
+    /**
+     * Returns the HTTP {@code User-Agent} sent with every request.
+     *
+     * @return {@code Micup4J/<version>}
+     */
     public static String getUserAgent() { return "Micup4J/" + VERSION; }
 
     private static String loadVersion() {

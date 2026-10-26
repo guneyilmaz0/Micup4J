@@ -19,9 +19,9 @@ public final class CommandAutoCompleteInteractionEvent extends net.guneyilmaz0.m
      */
     public CommandAutoCompleteInteractionEvent(Micup client, long sequence, JsonNode data) { super(client, sequence, data); }
     /**
-     * Returns the option the user is currently typing into.
+     * Returns the option the user is typing in.
      *
-     * @throws IllegalStateException if the payload marks no option as focused
+     * @return the focused option, whose value is the raw text so far
      */
     public AutoCompleteQuery getFocusedOption() {
         for (var option : selectedOptions()) if (option.path("focused").asBoolean()) {

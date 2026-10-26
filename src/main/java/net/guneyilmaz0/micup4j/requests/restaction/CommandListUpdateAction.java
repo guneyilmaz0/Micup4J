@@ -12,9 +12,28 @@ import java.util.concurrent.CompletableFuture;
 /** Bulk replacement: only added definitions survive. Definitions are copied when added. */
 public final class CommandListUpdateAction extends RestAction<List<Command>> {
     private final State state;
+    /**
+     * Creates the action; prefer {@code updateCommands()} on the client or a guild.
+     *
+     * @param client  the session
+     * @param guildId the guild, or {@code null} for global commands
+     */
     public CommandListUpdateAction(Micup client, String guildId) { this(new State(client, guildId)); }
     private CommandListUpdateAction(State state) { super(state::execute); this.state = state; }
+    /**
+     * Adds commands to the replacement set.
+     *
+     * @param commands the commands
+     * @return this action
+     */
     public CommandListUpdateAction addCommands(CommandData... commands) { return addCommands(Arrays.asList(commands)); }
+    /**
+     * Adds commands to the replacement set; each is copied.
+     *
+     * @param commands the commands; names must be unique
+     * @return this action
+     * @throws IllegalArgumentException if a name repeats within its type or the set exceeds 100 commands
+     */
     public CommandListUpdateAction addCommands(Collection<? extends CommandData> commands) {
         state.add(commands); return this;
     }
