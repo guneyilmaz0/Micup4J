@@ -13,12 +13,21 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - Unsigned 64-bit `PermissionSet`, the Micup permission registry and guild/channel permission resolution with incomplete-state validation.
 - Snapshot/incremental equivalence, eviction, permission-ordering and HTTP/Gateway integration tests.
 - [Entity API guide](docs/ENTITIES.md) documenting the unreleased 0.3 milestone scope.
+- JDA-style event packages and `onSlashCommandInteraction`, with bridges for existing flat-package listeners.
+- Mutable `Commands.slash` definitions, typed command update actions, upsert/retrieve/delete operations and client-bound guild helpers.
+- Typed option mappings, fluent `setEphemeral` callbacks returning `InteractionHook`, acknowledgement barriers and deferred original response handling.
+- Root `EmbedBuilder`/`Permission`, common entity getters, cached text-channel handles, unsigned ID overloads and custom avatar URL access.
+- A compiled JDA-style example and a [source compatibility guide](docs/JDA-COMPATIBILITY.md).
 
 ### Changed
 
 - In this checkout, `createDefault` now caches bounded entity state; `createLight` retains none. Enabled caches reject ignored state events at build time.
 - Cache updates precede the matching event's listeners. HTTP responses remain detached to avoid overwriting newer Gateway state.
 - Invalid permission-bearing entity events fail processing with sanitized diagnostics. Missing member roles and channel overwrites are not interpreted as empty sets.
+- Cache getters now follow JDA's object-or-null convention; Optional access moves to `find...ById`.
+- Reply/defer actions now complete with a typed hook instead of Void; direct `respond` retains its Void result.
+- No-argument `awaitReady()` now waits until Ready or failure without an implicit timeout. Use the duration overload for a bound.
+- Canonical channel types move to `entities.channel.ChannelType`; legacy constants remain a facade. Recompile alpha consumers.
 
 Version remains `0.2.0-alpha` until the next release is explicitly prepared. Indexed member search, wider mutation coverage and live-server fixture qualification remain open in the 0.3 roadmap.
 

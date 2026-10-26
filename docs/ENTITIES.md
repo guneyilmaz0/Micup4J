@@ -21,7 +21,7 @@ All operations return lazy `RestAction` values, use the discovered public API, a
 
 The server enforces access, hierarchy, MFA, content policy, and deployment limits. No mutation runs merely by constructing an action. Role creation sends permission masks as decimal strings; null omits the mask and uses the server's everyone-role default. This helper sends no feature declaration, so feature-gated permission writes follow server defaults. Arbitrary role editing, hierarchy mutations, audit reasons, feature headers and indexed member-search filters remain future work.
 
-A `Guild` stores selected identity and relationship fields, not every configuration field in the HTTP resource. `Member` stores the account, nickname, assigned role IDs, join time, timeout and voice moderation flags. Existing `User` and `MessageChannel` APIs retain their previous behavior. Guild channel snapshots expose `ChannelType`, `rawType`, and `canHaveMessages()`; voice channels have messages, categories and link channels do not. The channel parser rejects private channels in the guild-only retrieval helper.
+A `Guild` stores selected identity and relationship fields, not every configuration field in the HTTP resource. `Member` stores the account, nickname, assigned role IDs, join time, timeout and voice moderation flags. JDA-style getters and client-bound helpers are described in the [compatibility guide](JDA-COMPATIBILITY.md). `User` additionally retains its avatar hash and global display name; `MessageChannel` retains its REST operations. Guild channel snapshots expose `ChannelType`, `rawType`, and `canHaveMessages()`; voice channels have messages, categories and link channels do not. The channel parser rejects private channels in the guild-only retrieval helper.
 
 ### Member pagination
 
@@ -52,9 +52,9 @@ Import `net.guneyilmaz0.micup4j.config.CachePolicy`.
 
 Zero disables the named collection; zero guild capacity disables all entity storage. Bounds count entities, not bytes or application-held snapshots. Policy upper bounds are 10,000 guilds, 10,000 roles/channels per guild and 100,000 members per guild. Customize limits for the deployment and workload.
 
-`getGuildById` returns `Optional<Guild>` and `getGuilds` returns an immutable list. A miss means uncached; it is not proof that a guild or member does not exist. Cache reads do not issue HTTP requests. User-held snapshots do not update when the cache changes.
+`getGuildById` returns a `Guild` or null, and `findGuildById` returns `Optional<Guild>` and `getGuilds` returns an immutable list. A miss means uncached; it is not proof that a guild or member does not exist. Cache reads do not issue HTTP requests. User-held snapshots do not update when the cache changes.
 
-Guild eviction removes the least recently updated guild and all its children. Entity collection limits retain the last entries of an incoming snapshot; incremental upserts move changed entities to the end and evict the oldest entries. Reads do not change this order. Collections do not promise display or hierarchy order; `Role.HIERARCHY` provides descending position with ascending unsigned snowflake for ties.
+Guild eviction removes the least recently updated guild and all its children. Entity collection limits retain the last entries of an incoming snapshot; incremental upserts move changed entities to the end and evict the oldest entries. Reads do not change this order. Record component collections do not promise display or hierarchy order; `Guild.getRoles()` returns hierarchy order and `Role.HIERARCHY` provides descending position with ascending unsigned snowflake for ties.
 
 ### Gateway consistency and invalidation
 
@@ -79,7 +79,7 @@ import net.guneyilmaz0.micup4j.permissions.*;
 
 var guild = client.retrieveGuildById("123").complete();
 var member = client.retrieveMemberById("123", "456").complete();
-var channel = guild.getChannelById("789").orElseThrow();
+var channel = guild.findChannelById("789").orElseThrow();
 var permissions = PermissionResolver.channelPermissions(guild, member, channel);
 boolean maySend = permissions.contains(Permission.SEND_MESSAGES)
     && !member.isTimedOutAt(java.time.Instant.now());

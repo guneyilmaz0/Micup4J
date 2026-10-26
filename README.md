@@ -12,7 +12,7 @@ Micup4J provides a familiar builder, event listener, and REST action API inspire
 
 ## Unreleased development
 
-The current source checkout also includes the first `0.3.0-alpha` milestone work: typed guild/member/role/channel reads, basic management actions, bounded member pagination, configurable entity caches and permission calculations. These additions are not in the previously prepared `0.2.0-alpha` release. See the [entity API guide](docs/ENTITIES.md) for usage, cache defaults, consistency rules and remaining scope.
+The current source checkout also includes the first `0.3.0-alpha` milestone work: typed guild/member/role/channel reads, basic management actions, bounded member pagination, configurable entity caches and permission calculations. These additions are not in the previously prepared `0.2.0-alpha` release. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks and interaction hooks. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java), and [entity API guide](docs/ENTITIES.md).
 
 ## Supported features
 

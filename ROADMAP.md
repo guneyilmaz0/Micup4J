@@ -8,10 +8,24 @@ Milestones describe intended scope, not guaranteed dates. Micup API availability
 | --- | --- | --- |
 | `0.1.0-alpha` | Core bot session and REST foundation | Implemented |
 | `0.2.0-alpha` | Reliability, observability, and request scheduling | Implemented |
-| `0.3.0-alpha` | Guild entities, configurable caches, and permissions | In progress |
+| `0.3.0-alpha` | JDA-style bot API, entities, caches, and permissions | In progress |
 | `0.4.0-alpha` | Commands, embeds, components, and uploads | Planned |
 | `0.5.0-beta` | Multi-shard operation and performance qualification | Planned |
 | `1.0.0` | Stable core API and documented compatibility | Planned |
+
+## Source compatibility priority
+
+Keep common JDA bot handler bodies and method chains usable after import-prefix changes and the `JDA`/`JDABuilder` to `Micup`/`MicupBuilder` rename. Prioritize working, tested equivalents over new Micup-only calling conventions. Wire behavior and limits follow Micup. Unsupported Discord features must be explicit rather than silent no-ops.
+
+The first supported source fixture is [JdaStyleBot](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java); see the [compatibility matrix and migration guide](docs/JDA-COMPATIBILITY.md). This is source compatibility for an expanding subset, not a measured percentage or binary compatibility claim.
+
+- [x] Common listener packages, typed slash callbacks and entity getter conventions.
+- [x] Mutable `Commands.slash`, typed bulk command actions and guild command operations.
+- [x] Fluent ephemeral callbacks, typed options and acknowledgement-aware interaction hooks.
+- [x] Compile a representative JDA-style bot and verify the adapted flows against local protocol fixtures.
+- [ ] Expand source fixtures around the original BMO command classes, mentions, guild lifecycle and presence configuration.
+- [ ] Extend fluent message/webhook builders and advanced command definitions.
+- [ ] Add compatible shard-manager entry points once controlled multi-session operation is implemented.
 
 ## 0.1.0-alpha — Foundation
 
@@ -59,8 +73,10 @@ The first implementation is available in the source checkout under **Unreleased*
 
 - [ ] Add slash command options, subcommands, and autocomplete helpers.
 - [ ] Add embed, button, select menu, action row, and modal builders.
-- [ ] Add typed interaction option and submitted-field accessors.
-- [ ] Add interaction hooks for deferred responses and followup management.
+- [x] Add typed basic interaction option accessors and resolved entity helpers.
+- [ ] Add nested command paths and submitted modal-field accessors.
+- [x] Add acknowledgement-aware hooks for deferred originals and basic followups.
+- [ ] Extend hooks with full followup editing, ephemeral action setters and attachment/component support.
 - [ ] Implement attachment uploads where Micup supports them.
 - [ ] Publish examples for moderation, command routing, and interactive menus.
 

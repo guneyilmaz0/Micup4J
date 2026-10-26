@@ -1,5 +1,16 @@
 # Release and upgrade guide
 
+## Unreleased source migration
+
+The checkout now targets JDA-style source usage. This is not a new prepared release; the release version below remains unchanged. Review the [compatibility guide](docs/JDA-COMPATIBILITY.md) before updating an existing alpha consumer:
+
+- Cache getters return objects or null; move Optional access to `find...ById`.
+- Reply/defer actions complete with `InteractionHook`; update explicitly typed `RestAction<Void>` usages.
+- Import canonical channel types from `entities.channel.ChannelType`.
+- No-argument `awaitReady()` has no automatic timeout; use `awaitReady(Duration)` for a bound.
+- Existing flat event handlers remain bridged. New code can use the JDA-style event subpackages and `onSlashCommandInteraction`.
+- Micup public deferred responses have no placeholder: create the original with `hook.editOriginal(...)` before retrieving it.
+
 ## Current release
 
 | Field | Value |
