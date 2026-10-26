@@ -1,6 +1,6 @@
-# Entities, caches, and permissions (unreleased)
+# Entities, caches, and permissions
 
-This document describes the current source checkout's work toward `0.3.0-alpha`. These APIs are not included in the previously prepared `0.2.0-alpha` release. The release version has not been advanced.
+This document describes the entity, cache, permission and moderation APIs released in `0.3.0-alpha`.
 
 ## Typed HTTP operations
 
@@ -17,9 +17,24 @@ All operations return lazy `RestAction` values, use the discovered public API, a
 | Guild name | `modifyGuildName(guildId, name)` |
 | Member nickname; null clears | `modifyMemberNickname(guildId, userId, nickname)` |
 | Assign / remove one role | `addMemberRole(guildId, userId, roleId)` / `removeMemberRole(...)` |
-| Create role / rename role | `createRole(guildId, name, color, permissions)` / `modifyRoleName(...)` |
+| Create role / rename role | `createRole(guildId)` (fluent) or `createRole(guildId, name, color, permissions)` / `modifyRoleName(...)` |
+| Modify / delete role | `modifyRole(guildId, roleId)` (fluent `RoleManager`) / `deleteRole(guildId, roleId)` |
+| Kick / ban / unban | `kick(guildId, userId)` / `ban(guildId, userId, deletionTimeframe, unit[, duration])` / `unban(...)` |
+| Timeout | `timeoutFor(guildId, userId, duration)` / `timeoutUntil(...)` / `removeTimeout(...)` |
+| Indexed member search | `searchMembers(guildId)` |
 
-The server enforces access, hierarchy, MFA, content policy, and deployment limits. No mutation runs merely by constructing an action. Role creation sends permission masks as decimal strings; null omits the mask and uses the server's everyone-role default. This helper sends no feature declaration, so feature-gated permission writes follow server defaults. Arbitrary role editing, hierarchy mutations, audit reasons, feature headers and indexed member-search filters remain future work.
+The server enforces access, hierarchy, MFA, content policy, and deployment limits. No mutation runs merely by constructing an action. Role writes send permission masks as decimal strings; an omitted mask on creation copies the everyone role. Whenever a mask is set, the request declares every gated feature in `X-Fluxer-Features` (today `view_channel_members_permission`), so the mask is stored exactly as sent, including `VIEW_CHANNEL_MEMBERS`. A `RoleManager` sends only the fields that were set, and an empty manager completes without a request. Role position and hoist-position changes are not implemented.
+
+### Audit log reasons
+
+```java
+guild.ban(member, 1, TimeUnit.DAYS).reason("Spam").queue();
+client.modifyRole(guildId, roleId).setName("Moderator").reason("Promotion").queue();
+```
+
+Every mutation above returns an `AuditableRestAction`. Micup stores `X-Audit-Log-Reason` verbatim without percent-decoding, so header reasons must be printable ASCII; other characters fail locally with `IllegalArgumentException`. Ban and timeout reasons travel in the JSON body (`reason`, `timeout_reason`) and accept any Unicode text. Reasons are trimmed; blank values send none, and values over 512 characters fail locally rather than being silently discarded by the server.
+
+Timeouts accept at most 365 days and are computed when the action executes. Bans delete up to 7 days of messages and may last 60 seconds to 730 days; omitting the duration bans permanently.
 
 A `Guild` stores selected identity and relationship fields, not every configuration field in the HTTP resource. `Member` stores the account, nickname, assigned role IDs, join time, timeout and voice moderation flags. JDA-style getters and client-bound helpers are described in the [compatibility guide](JDA-COMPATIBILITY.md). `User` additionally retains its avatar hash and global display name; `MessageChannel` retains its REST operations. Guild channel snapshots expose `ChannelType`, `rawType`, and `canHaveMessages()`; voice channels have messages, categories and link channels do not. The channel parser rejects private channels in the guild-only retrieval helper.
 
@@ -33,7 +48,18 @@ if (!page.isEmpty()) {
 }
 ```
 
-A page limit is 1–1000. `after` is exclusive, and pages are ascending by unsigned user snowflake. Oversized, duplicate, out-of-order or nonadvancing responses fail. There is no automatic background roster download or unbounded `retrieveAll` operation. Stop when a page is empty; concurrent membership changes can affect pages. Applications control how many pages and members they retain. Indexed search uses a different protocol and is not implemented by this paginator.
+A page limit is 1–1000. `after` is exclusive, and pages are ascending by unsigned user snowflake. Oversized, duplicate, out-of-order or nonadvancing responses fail. There is no automatic background roster download or unbounded `retrieveAll` operation. Stop when a page is empty; concurrent membership changes can affect pages. Applications control how many pages and members they retain. Indexed search and Gateway member requests are separate protocols, described below.
+
+### Indexed member search
+
+```java
+var page = guild.searchMembers().setQuery("ada").setRoles(role).setLimit(50).complete();
+if (page.indexing()) { /* the index is being built; retry later */ }
+```
+
+Search needs one of `MANAGE_GUILD`, `MANAGE_ROLES`, `MANAGE_NICKNAMES`, `BAN_MEMBERS`, `MODERATE_MEMBERS` or `KICK_MEMBERS`. Filters cover text (100 characters), up to 10 required roles, inclusive join and account-creation ranges in whole seconds, bot accounts, join source types and invite codes (applied only with `MANAGE_GUILD`), offset and sort order. Results are partial `MemberSearchResult.Entry` values without avatars, timeouts or voice state; they can be stale and may include members who left. An empty page with `indexing()` false can also mean search is unavailable, and `totalResultCount` may be a capped estimate. Retrieve the member before acting on current state.
+
+Members can also be requested over the Gateway with `retrieveMembersByPrefix`, `retrieveMembersByIds` and `loadMembers`; see [member requests](GATEWAY.md#member-requests-opcode-8).
 
 ## Cache policies
 

@@ -63,11 +63,11 @@ Diagnostics share the bounded listener executor and are best effort. They can be
 
 `GatewayCloseCode.fromCode(code)` exposes this policy. Stop is a conservative client decision for malformed protocol/authentication cases, even where the server may retain a session. A failed Resume that receives Invalid Session starts a fresh Identify on the current socket.
 
-## Presence (unreleased)
+## Presence
 
 Builder/runtime presence now uses Identify's initial presence and authenticated opcode 3. Updates coalesce to the latest desired state, are paced at least 4.1 seconds apart on one socket, and are restored after Ready/Resumed. Micup publishes custom status rather than Discord activities; see [presence mapping and limits](PRESENCE.md).
 
-## Typed message and member events (unreleased)
+## Typed message and member events
 
 Gateway `MESSAGE_UPDATE`, `MESSAGE_DELETE`, `GUILD_MEMBER_ADD` and `GUILD_MEMBER_REMOVE` dispatches are delivered as `MessageUpdateEvent`, `MessageDeleteEvent`, `GuildMemberJoinEvent` and `GuildMemberRemoveEvent`, with `GenericMessageEvent`/`GenericGuildMemberEvent` parents and matching `ListenerAdapter` callbacks. See the [compatibility guide](JDA-COMPATIBILITY.md).
 
@@ -86,6 +86,15 @@ Events remain ordered within a session. Processed sequences advance after listen
 
 A full event queue causes a permanent client failure instead of silently acknowledging a dropped dispatch. Listener exceptions are isolated and reported without their potentially credential-bearing exception text. Shutdown aborts open or late-opening sockets, cancels retry timers, closes REST work, and completes pending lifecycle futures.
 
-The unreleased source checkout adds ordered entity-cache updates before listeners; see [entity state and invalidation](ENTITIES.md). Typed guild lifecycle callbacks run on that same event, after cache updates; identity classification is bounded separately from entity eviction. See the [lifecycle rules](JDA-COMPATIBILITY.md#guild-lifecycle-events). Invalid permission-bearing entity payloads fail processing and are not acknowledged as successful delivery.
+Since `0.3.0-alpha`, the client applies ordered entity-cache updates before listeners; see [entity state and invalidation](ENTITIES.md). Typed guild lifecycle callbacks run on that same event, after cache updates; identity classification is bounded separately from entity eviction. See the [lifecycle rules](JDA-COMPATIBILITY.md#guild-lifecycle-events). Invalid permission-bearing entity payloads fail processing and are not acknowledged as successful delivery.
 
 Reference: [Micup Gateway](https://micup.gg/docs/gateway/overview/), [close codes](https://micup.gg/docs/gateway/opcodes-and-close-codes/).
+
+## Member requests (opcode 8)
+
+`retrieveMembersByPrefix(guildId, prefix, limit)`, `retrieveMembersByIds(guildId, ids)` and `loadMembers(guildId)` (and their `Guild` equivalents) send Request Guild Members and return a running `Task<List<Member>>`. Micup runs one member request per connection and replaces a pending one, so Micup4J sends them strictly one at a time in submission order, each with a unique nonce, and holds at most 64 more in a local queue. Chunks are matched by nonce and collected until `chunk_count` is reached; the merged member cache is updated by the same events.
+
+- No chunk for 30 seconds fails the task with `TimeoutException`; Micup silently drops requests for guilds the session is not connected to. `Task.setTimeout` adds an overall bound.
+- `loadMembers` is admitted once per bot and guild every 30 seconds; a refusal fails with `GatewayRateLimitException.getRetryAfter()`.
+- Chunks are never replayed on Resume, so a connection loss fails the running request. Queued requests are sent after the session is restored. Closing the client fails every pending request.
+- Ignoring `GUILD_MEMBERS_CHUNK` makes these helpers fail immediately. Results are held in memory in full; `loadMembers` may return up to 100,000 members.

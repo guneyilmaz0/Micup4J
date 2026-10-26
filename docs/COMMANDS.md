@@ -1,6 +1,6 @@
 # Advanced commands and fluent messages
 
-These APIs are available in the **unreleased source checkout** toward `0.3.0-alpha`. The prepared release remains `0.2.0-alpha`. They implement a supported subset of JDA's source conventions over the Micup protocol. Recompile consuming applications after updating the checkout.
+These APIs are part of `0.3.0-alpha`. They implement a supported subset of JDA's source conventions over the Micup protocol. Recompile consuming applications after updating the checkout.
 
 ## Define options and nested commands
 

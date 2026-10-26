@@ -1,8 +1,20 @@
 # Release and upgrade guide
 
-## Unreleased source migration
+## Current release
 
-The checkout now targets JDA-style source usage. This is not a new prepared release; the release version below remains unchanged. Review the [compatibility guide](docs/JDA-COMPATIBILITY.md) before updating an existing alpha consumer:
+| Field | Value |
+| --- | --- |
+| Version | `0.3.0-alpha` |
+| Display name | Micup4J 0.3 Alpha |
+| Suggested Git tag | `v0.3.0-alpha` |
+| Release date | October 27, 2026 |
+| Java baseline | Java 21 |
+| Dependency | `net.guneyilmaz0.micup4j:Micup4J:0.3.0-alpha` |
+| Status | Early alpha; not published to Maven Central |
+
+## Upgrading from 0.2.0-alpha
+
+Change the dependency to `0.3.0-alpha` and recompile. This release targets JDA-style source usage; review the [compatibility guide](docs/JDA-COMPATIBILITY.md) before updating an existing alpha consumer:
 
 - Message send/reply/edit methods now return fluent action subtypes. Recompile consumers; existing `RestAction<Message>` source assignments remain valid.
 - Advanced commands use `OptionData`, `SubcommandData` and `SubcommandGroupData`; see the [command toolkit guide](docs/COMMANDS.md) for autocomplete and message chains.
@@ -20,20 +32,11 @@ The checkout now targets JDA-style source usage. This is not a new prepared rele
 - `editMessage(null)` now sends an empty string rather than failing; `Message.reply` validates the message id.
 - Malformed typed-event payloads now arrive as plain `GenericEvent`; override `onGenericEvent` if you need to observe them.
 - Micup public deferred responses have no placeholder: create the original with `hook.editOriginal(...)` before retrieving it.
+- **Binary break:** guild mutation methods return `AuditableRestAction`, and `createRole(guildId, name, color, permissions)` returns `RoleAction`. Source assignments to `RestAction` still compile; recompile consumers.
+- `createRole` with an explicit mask now writes `VIEW_CHANNEL_MEMBERS` exactly as supplied; previously the server cleared it.
+- Audit reasons sent as headers must be printable ASCII; use ban/timeout body reasons for other text.
 
-## Current release
-
-| Field | Value |
-| --- | --- |
-| Version | `0.2.0-alpha` |
-| Display name | Micup4J 0.2 Alpha |
-| Suggested Git tag | `v0.2.0-alpha` |
-| Release date | October 26, 2026 |
-| Java baseline | Java 21 |
-| Dependency | `net.guneyilmaz0.micup4j:Micup4J:0.2.0-alpha` |
-| Status | Early alpha; not published to Maven Central |
-
-## Upgrading from 0.1.0-alpha
+## Upgrading from 0.1.0-alpha to 0.2.0-alpha
 
 1. Change the dependency version to `0.2.0-alpha` and recompile the consuming application.
 2. For a composite build, update the sibling Micup4J checkout. For Maven local, run `./gradlew publishToMavenLocal` in the library checkout.
@@ -43,7 +46,7 @@ The checkout now targets JDA-style source usage. This is not a new prepared rele
 
 The BMO source dependency has been updated and its integration suite is used for compatibility verification. The release preparation itself does not restart the live bot or alter its credentials/commands. No token rotation is required by this upgrade.
 
-## Behavior changes
+## 0.2.0-alpha behavior changes
 
 ### REST scheduling
 
@@ -92,12 +95,12 @@ See [GATEWAY.md](docs/GATEWAY.md) for connection timing and all documented close
 
 Upload the source repository with the wrapper, tests, example, and documentation. Local credentials, IDE state, logs, and build output are excluded by `.gitignore`.
 
-Create a **pre-release** titled **Micup4J 0.2 Alpha**, tagged `v0.2.0-alpha`. Paste the contents of [the release README](docs/releases/README-0.2.0-alpha.md) into the release description. Attach:
+Create a **pre-release** titled **Micup4J 0.3 Alpha**, tagged `v0.3.0-alpha`. Paste the contents of [the release README](docs/releases/README-0.3.0-alpha.md) into the release description. Attach:
 
 ```text
-build/libs/Micup4J-0.2.0-alpha.jar
-build/libs/Micup4J-0.2.0-alpha-sources.jar
-build/libs/Micup4J-0.2.0-alpha-javadoc.jar
+build/libs/Micup4J-0.3.0-alpha.jar
+build/libs/Micup4J-0.3.0-alpha-sources.jar
+build/libs/Micup4J-0.3.0-alpha-javadoc.jar
 ```
 
 The CI workflow builds and tests; it does not automatically publish packages or create a release. A remote CI run can only be verified after upload. No Maven Central publication or license choice is implied by preparing these files.
@@ -106,6 +109,7 @@ The CI workflow builds and tests; it does not automatically publish packages or 
 
 `gradle.properties` remains the artifact version source. Runtime metadata and the JAR manifest are generated from it.
 
+- [0.2 Alpha release notes](docs/releases/README-0.2.0-alpha.md)
 - [0.1 Alpha release notes](docs/releases/README-0.1.0-alpha.md)
 - [Full changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)

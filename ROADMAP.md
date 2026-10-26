@@ -8,7 +8,7 @@ Milestones describe intended scope, not guaranteed dates. Micup API availability
 | --- | --- | --- |
 | `0.1.0-alpha` | Core bot session and REST foundation | Implemented |
 | `0.2.0-alpha` | Reliability, observability, and request scheduling | Implemented |
-| `0.3.0-alpha` | JDA-style bot API, entities, caches, and permissions | In progress |
+| `0.3.0-alpha` | JDA-style bot API, entities, caches, and permissions | Implemented |
 | `0.4.0-alpha` | Commands, embeds, components, and uploads | Planned |
 | `0.5.0-beta` | Multi-shard operation and performance qualification | Planned |
 | `1.0.0` | Stable core API and documented compatibility | Planned |
@@ -62,17 +62,17 @@ This release also brings forward basic value-option definitions and rich embed b
 - [x] Add ordered guild ready/join/availability/leave callbacks with bounded session identity tracking.
 - [x] Expose basic message mentions and primary/gradient role colors without implicit HTTP.
 - [x] Add coalesced status/activity setters using Micup custom status and opcode 3.
-- [ ] Expand mutation coverage, audit reasons, and feature-gated permission writes.
+- [x] Expand mutation coverage, audit reasons, and feature-gated permission writes.
 - [x] Add bounded configurable cache policies with separate light/default presets.
 - [x] Apply guild snapshots, syncs, incremental/bulk updates, deletions, and unavailable-state invalidation before listeners.
 - [x] Implement unsigned 64-bit masks, role aggregation, channel overwrites, and explicit failures for incomplete permission state.
 - [x] Add bounded HTTP member pages with exclusive, validated cursors.
-- [ ] Add indexed member queries and Gateway member-request helpers.
+- [x] Add indexed member queries and Gateway member-request helpers.
 - [ ] Compare permission calculations with server fixtures and verify real guild/subscription recovery.
 
 **Completion criteria:** snapshots and incremental updates yield equivalent state in tests; cache limits and invalidation rules are documented; permission results match Micup's documented rules and server fixtures.
 
-The first implementation is available in the source checkout under **Unreleased**, not in the prepared `0.2.0-alpha` release. See [entities, caches, and permissions](docs/ENTITIES.md) for limits, update ordering, and the implemented subset.
+Released as `0.3.0-alpha`. Comparing permission results with live-server fixtures and verifying real guild/subscription recovery need a live Micup deployment and remain open; they carry over to beta qualification. See [entities, caches, and permissions](docs/ENTITIES.md) and the [release notes](docs/releases/README-0.3.0-alpha.md).
 
 ## 0.4.0-alpha — Bot interaction toolkit
 

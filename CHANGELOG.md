@@ -4,7 +4,17 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 
 ## [Unreleased]
 
+## [0.3.0-alpha] — 2026-10-27
+
 ### Added
+
+- `AuditableRestAction.reason(...)` on every guild, member, role and ban mutation. Header reasons (`X-Audit-Log-Reason`) must be printable ASCII; ban and timeout reasons travel in the body and accept any Unicode text. Reasons over 512 characters fail locally instead of being dropped by the server.
+- Fluent `RoleAction` (`createRole(guildId)`/`guild.createRole()`) and `RoleManager` (`modifyRole`/`guild.modifyRole(role)`) with name, color, permission, hoist and mentionable setters, plus `deleteRole`.
+- Moderation actions: `kick`, `ban` (message deletion window and Micup's optional ban duration), `unban`, `timeoutFor`, `timeoutUntil` and `removeTimeout`, with JDA-style `Guild` and `Member` delegates and `addRoleToMember`/`removeRoleFromMember`/`modifyNickname`.
+- Feature-gated permission writes: role writes that set a mask declare `X-Fluxer-Features`, so gated bits such as `VIEW_CHANNEL_MEMBERS` are stored exactly as sent. `Permission.getWriteFeature()` exposes the registry.
+- Indexed member search through `searchMembers(guildId)`/`guild.searchMembers()` with query, role, join-time, account-age, bot, join-source, invite and sort filters, returning partial `MemberSearchResult` entries.
+- Gateway member requests (opcode 8): `retrieveMembersByPrefix`, `retrieveMembersByIds` and `loadMembers` returning a JDA-style `utils.concurrent.Task`. Requests run one at a time per connection with unique nonces, collect every chunk, fail on `RATE_LIMITED` with `GatewayRateLimitException`, time out after 30 seconds without a chunk, and survive reconnects while queued.
+- `RestClient.request(..., Map<String, String> headers)` for `X-` extension headers.
 
 - JDA-style `OptionData`, `SubcommandData`, and `SubcommandGroupData`, with copied children, choice typing, numeric/string/channel constraints, sibling limits, and atomic validation.
 - Nested command paths and leaf option access, typed `CommandAutoCompleteInteractionEvent`/`AutoCompleteQuery`, and lazy type-8 callbacks with shared deadlines and acknowledgement protection.
@@ -17,7 +27,7 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - Configurable `CachePolicy`, bounded Gateway-owned entity state, bulk updates, sync handling and deletion/unavailability invalidation.
 - Unsigned 64-bit `PermissionSet`, the Micup permission registry and guild/channel permission resolution with incomplete-state validation.
 - Snapshot/incremental equivalence, eviction, permission-ordering and HTTP/Gateway integration tests.
-- [Entity API guide](docs/ENTITIES.md) documenting the unreleased 0.3 milestone scope.
+- [Entity API guide](docs/ENTITIES.md) documenting the 0.3 milestone scope.
 - JDA-style event packages and `onSlashCommandInteraction`, with bridges for existing flat-package listeners.
 - Mutable `Commands.slash` definitions, typed command update actions, upsert/retrieve/delete operations and client-bound guild helpers.
 - Typed option mappings, fluent `setEphemeral` callbacks returning `InteractionHook`, acknowledgement barriers and deferred original response handling.
@@ -37,12 +47,14 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 
 ### Breaking
 
+- Guild mutation methods (`modifyGuildName`, `modifyMemberNickname`, `addMemberRole`, `removeMemberRole`, `modifyRoleName`) return `AuditableRestAction`, and `createRole(guildId, name, color, permissions)` returns `RoleAction`. Source assignments to `RestAction` remain valid; recompile because JVM descriptors changed.
 - `InteractionHook.sendMessage`, `editOriginal` and `editOriginalEmbeds` return new action types. Source is compatible; the JVM descriptors changed, so recompile.
 - `Status` gains `SHUTTING_DOWN`; exhaustive switches over it no longer compile without a case.
 - `RestConfig` gains a seventh record component, `shutdownTimeout`. The six-argument constructor remains, but six-component record patterns no longer match.
 
 ### Changed
 
+- `createRole` with an explicit permission mask now declares the gated-permission feature, so `VIEW_CHANNEL_MEMBERS` is written as supplied instead of being cleared by the server.
 - Message channel send methods and message reply/edit methods now return specialized `RestAction<Message>` subtypes. Source assignments to `RestAction<Message>` remain valid; recompile consumers because JVM method descriptors changed.
 
 - In this checkout, `createDefault` now caches bounded entity state; `createLight` retains none. Enabled caches reject ignored state events at build time.
@@ -66,7 +78,7 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - Malformed typed-event payloads (for example a blank interaction token or invalid snowflakes in `MESSAGE_CREATE`) are delivered as plain `GenericEvent` with a reported failure instead of failing the session.
 - Cancelling a `queueAfter` handle invokes no callback, matching JDA.
 
-Version remains `0.2.0-alpha` until the next release is explicitly prepared. Indexed member search, wider mutation coverage and live-server fixture qualification remain open in the 0.3 roadmap.
+Permission calculations are verified against documentation-derived local fixtures; comparison with live-server fixtures and real guild/subscription recovery remain open and carry over to the next milestone.
 
 ## [0.2.0-alpha] — 2026-10-26
 

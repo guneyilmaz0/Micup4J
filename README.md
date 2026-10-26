@@ -4,15 +4,15 @@
 
 Micup4J provides a familiar builder, event listener, and REST action API inspired by [JDA](https://github.com/discord-jda/JDA), implemented for Micup's REST and Gateway protocols.
 
-**Release:** `0.2.0-alpha` · **Java:** 21+ · **REST / Gateway:** v1
+**Release:** `0.3.0-alpha` · **Java:** 21+ · **REST / Gateway:** v1
 
 > Early alpha: the public API may change between releases. Micup4J does not yet provide JDA's full feature set or established performance characteristics.
 
 [Getting started](#getting-started) · [Supported features](#supported-features) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Upgrade guide](UPDATE.md)
 
-## Unreleased development
+## What's new in 0.3
 
-The current source checkout also includes the first `0.3.0-alpha` milestone work: typed guild/member/role/channel reads, basic management actions, bounded member pagination, configurable entity caches and permission calculations. These additions are not in the previously prepared `0.2.0-alpha` release. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
+`0.3.0-alpha` adds typed guild/member/role/channel reads, bounded member pagination, configurable entity caches and permission calculations, moderation and role actions with audit log reasons, indexed member search and Gateway member requests. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
 
 ## Supported features
 
@@ -29,6 +29,7 @@ The current source checkout also includes the first `0.3.0-alpha` milestone work
 | Interactions | Priority/deadline-aware replies, defer, edit/read/delete original responses, and followups |
 | Embeds | Validated rich embed builder; channel, reply, and interaction helpers |
 | Diagnostics | Typed status/reconnect events and queue, retry, and latency metrics |
+| Guilds | Typed reads, bounded caches, permission resolution, role/member/ban moderation with audit reasons, indexed search and Gateway member requests |
 | Shards | Explicit shard ID and shard count for a single session |
 
 Micup does not use Discord's intent system. Micup4J supports ignored event names instead.
@@ -56,9 +57,9 @@ From the repository directory:
 On Windows, use `gradlew.bat`. Build outputs are written to `build/libs/`:
 
 ```text
-Micup4J-0.2.0-alpha.jar
-Micup4J-0.2.0-alpha-sources.jar
-Micup4J-0.2.0-alpha-javadoc.jar
+Micup4J-0.3.0-alpha.jar
+Micup4J-0.3.0-alpha-sources.jar
+Micup4J-0.3.0-alpha-javadoc.jar
 ```
 
 The main JAR is a library JAR, not a standalone executable or a bundle of dependencies.
@@ -77,7 +78,7 @@ In your bot's `build.gradle.kts`:
 repositories { mavenCentral() }
 
 dependencies {
-    implementation("net.guneyilmaz0.micup4j:Micup4J:0.2.0-alpha")
+    implementation("net.guneyilmaz0.micup4j:Micup4J:0.3.0-alpha")
 }
 ```
 
@@ -215,7 +216,7 @@ Import `net.guneyilmaz0.micup4j.events.InteractionCreateEvent` for this handler.
 
 For longer work, submit `deferReply(true)` first and chain `editOriginal(...)` after it completes. Micup requires the initial response within **3 seconds** and permits later edits and followups within **15 minutes**. Those deadlines are enforced by the server. See [Interactions](https://micup.gg/docs/http-api/interactions/).
 
-`respond(type, JsonNode)` exposes supported callback shapes for component updates, autocomplete, and modals. Typed component builders remain planned. The unreleased source supports `OptionData` constraints and choices, subcommands/groups, typed autocomplete callbacks, and fluent message creation/editing; see the [command toolkit guide](docs/COMMANDS.md).
+`respond(type, JsonNode)` exposes supported callback shapes for component updates, autocomplete, and modals. Typed component builders remain planned. The library supports `OptionData` constraints and choices, subcommands/groups, typed autocomplete callbacks, and fluent message creation/editing; see the [command toolkit guide](docs/COMMANDS.md).
 
 ## Embeds and typed options
 
@@ -250,7 +251,7 @@ var builder = MicupBuilder.createLight(token)
     .setErrorHandler(error -> System.err.println(error.getMessage()));
 ```
 
-- In the unreleased source checkout, `createDefault` uses bounded entity caches and `createLight` stores none. Use `setCachePolicy(...)` to customize limits; cached clients require their state events. The prepared `0.2.0-alpha` release had no persistent entity cache.
+- `createDefault` uses bounded entity caches and `createLight` stores none. Use `setCachePolicy(...)` to customize limits; cached clients require their state events. `0.2.0-alpha` had no persistent entity cache.
 - Queue capacity must be positive. Normal REST capacity includes running and waiting operations, with eight additional callback admission slots by default; event capacity counts waiting events, with one additional event potentially executing.
 - `.setShard(0, 2)` opens **one** session for shard 0 of 2. It does not create the other shard.
 - REST and discovery endpoints require HTTPS, and Gateway endpoints require WSS. Plain HTTP/WS is allowed only for loopback development endpoints.
@@ -269,8 +270,8 @@ If the event queue fills, the client fails instead of silently acknowledging a d
 
 Not yet included:
 
-- Complete entity managers, indexed member queries, Gateway member requests, and advanced mutation helpers. Basic caches and permission resolution are available in the unreleased source checkout.
-- Typed component builders, attachment uploads, and complete webhook/followup action builders. Advanced command options and autocomplete are available in the unreleased source.
+- Role position changes, channel/overwrite editing and other entity managers beyond roles, members and bans. Permission results are not yet compared with live-server fixtures.
+- Typed component builders, attachment uploads, and complete webhook/followup action builders. Advanced command options and autocomplete are available.
 - Automatic shard orchestration or distributed rate limit coordination.
 - Voice connections, audio playback, or music support.
 - A measured JDA performance comparison.

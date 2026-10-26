@@ -1,6 +1,6 @@
-# Session presence (unreleased)
+# Session presence
 
-The source checkout supports the familiar JDA builder and presence manager names using Micup's Identify presence and opcode 3. These additions are not part of the previously prepared `0.2.0-alpha` release.
+The source checkout supports the familiar JDA builder and presence manager names using Micup's Identify presence and opcode 3. These additions are part of `0.3.0-alpha`; they were not in the `0.2.0-alpha` release.
 
 ```java
 var client = MicupBuilder.createDefault(token)
