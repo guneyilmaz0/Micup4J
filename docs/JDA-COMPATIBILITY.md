@@ -1,4 +1,4 @@
-# JDA-style source compatibility (0.3.0-alpha)
+# JDA-style source compatibility
 
 Micup4J now prioritizes familiar JDA source patterns for common text bots. The target is to keep handler bodies and method chains recognizable while replacing the transport with Micup's protocol. This is an implemented subset, not a drop-in replacement for the complete JDA library or a claim of a measured compatibility percentage.
 
@@ -86,6 +86,11 @@ Micup has no Discord intents. Remove Discord intent configuration instead of exp
 | `guild.kick/ban/unban/timeoutFor/removeTimeout`, `member.kick/ban/timeoutFor`, `.reason(...)` | `AuditableRestAction` mutations; header reasons must be printable ASCII, ban/timeout reasons accept Unicode |
 | `guild.createRole().setName(...)...`, `addRoleToMember`, `removeRoleFromMember`, `modifyNickname` | Fluent `RoleAction`; roles are not client-bound, so `role.getManager()`/`role.delete()` become `guild.modifyRole(role)`/`guild.deleteRole(role)` |
 | `guild.retrieveMembersByPrefix/retrieveMembersByIds/loadMembers` | Gateway opcode 8 returning `Task<List<Member>>`; requests run one at a time per connection, `loadMembers` is limited to one per guild every 30 s |
+| `Button.primary/link`, `ActionRow.of`, `StringSelectMenu.create`, `EntitySelectMenu.create`, `setActionRow/addActionRow/setComponents` | Same package names under `interactions.components`; limits checked locally |
+| `onButtonInteraction`, `onStringSelectInteraction`, `onEntitySelectInteraction`, `deferEdit`, `editMessage`, `editComponents`, `editButton` | Typed component events with callback types 6/7 |
+| `replyModal(Modal.create(...).addActionRow(TextInput...))`, `onModalInteraction`, `getValue(id).getAsString()` | Text-input modals only; Micup does not offer selects or uploads in modals |
+| `channel.sendFiles(FileUpload.fromData(...))`, `message.replyFiles`, `addFiles` | Multipart message creation; interaction replies and hooks cannot carry files on Micup |
+| `DefaultShardManagerBuilder.createDefault(token).setShardsTotal(n).build()`, `getShardById`, `getShards`, `getShardInfo()`, `restart`, `addEventListenerProvider` | `sharding` package; shards share one REST client, starts are gated by `SessionStartGate` |
 | `User.getAvatarUrl()` | Discovered Media Proxy URL for a custom avatar; null when absent |
 
 ### Reply and defer flows

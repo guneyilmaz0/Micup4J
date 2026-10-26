@@ -4,13 +4,37 @@
 
 | Field | Value |
 | --- | --- |
-| Version | `0.3.0-alpha` |
-| Display name | Micup4J 0.3 Alpha |
-| Suggested Git tag | `v0.3.0-alpha` |
+| Version | `1.0.0-rc.1` |
+| Display name | Micup4J 1.0 RC 1 |
+| Suggested Git tag | `v1.0.0-rc.1` |
 | Release date | October 27, 2026 |
 | Java baseline | Java 21 |
-| Dependency | `net.guneyilmaz0.micup4j:Micup4J:0.3.0-alpha` |
-| Status | Early alpha; not published to Maven Central |
+| Dependency | `net.guneyilmaz0.micup4j:Micup4J:1.0.0-rc.1` |
+| Status | Release candidate; not yet published to Maven Central |
+
+## Upgrading from 0.5.0-beta
+
+Change the dependency to `1.0.0-rc.1` and recompile. There are no removals.
+
+- Deprecation warnings point at legacy aliases; the [compatibility policy](docs/COMPATIBILITY.md#deprecated-in-10) lists each replacement. They keep working through 1.x.
+- From 1.0, minor releases are source- and binary-compatible. The policy describes what is excluded, such as the `internal` package.
+
+## Upgrading from 0.4.0-alpha
+
+Change the dependency to `0.5.0-beta` and recompile. There are no breaking API changes.
+
+- Bots that ran several `Micup` sessions by hand can move to `DefaultShardManagerBuilder`, or pass one `RestClient.shared(...)` to each `MicupBuilder.setRestClient(...)` so that their requests share rate limits.
+- A shard manager starts shards about one second apart and waits for each Ready. Allow for that when sizing startup health checks.
+- Shut a manager down with `shutdown()` and `awaitShutdown(...)`; it drains the shared REST client after every shard has stopped.
+
+## Upgrading from 0.3.0-alpha
+
+Change the dependency to `0.4.0-alpha` and recompile.
+
+- Custom implementations of `entities.channel.middleman.MessageChannel` must add `sendFiles(FileUpload...)` and `sendFiles(Collection)`.
+- Component and modal interactions now arrive as `ButtonInteractionEvent`, `StringSelectInteractionEvent`, `EntitySelectInteractionEvent` and `ModalInteractionEvent`. Existing `onInteractionCreate` handlers still receive them; move logic to the typed callbacks to use `deferEdit`, `editMessage`, `getValues` and `getValue`.
+- Prefer the component builders over raw `respond(type, JsonNode)` payloads; the builders check Micup's limits before sending.
+- Interaction replies, followups and hook edits cannot carry files on Micup. Send files with `channel.sendFiles(...)` instead.
 
 ## Upgrading from 0.2.0-alpha
 
@@ -87,29 +111,19 @@ Imports: `net.guneyilmaz0.micup4j.interactions.SlashCommand`, `net.guneyilmaz0.m
 
 See [GATEWAY.md](docs/GATEWAY.md) for connection timing and all documented close-code actions.
 
-## Preparing the GitHub release
+## Preparing a release
 
-```bash
-./gradlew clean build
-```
-
-Upload the source repository with the wrapper, tests, example, and documentation. Local credentials, IDE state, logs, and build output are excluded by `.gitignore`.
-
-Create a **pre-release** titled **Micup4J 0.3 Alpha**, tagged `v0.3.0-alpha`. Paste the contents of [the release README](docs/releases/README-0.3.0-alpha.md) into the release description. Attach:
-
-```text
-build/libs/Micup4J-0.3.0-alpha.jar
-build/libs/Micup4J-0.3.0-alpha-sources.jar
-build/libs/Micup4J-0.3.0-alpha-javadoc.jar
-```
-
-The CI workflow builds and tests; it does not automatically publish packages or create a release. A remote CI run can only be verified after upload. No Maven Central publication or license choice is implied by preparing these files.
+See [RELEASING.md](docs/RELEASING.md). In short: update the version, changelog and release notes, run `./gradlew verifyRelease`, then push a `v<version>` tag. The release workflow checks reproducibility, builds the signed Central bundle and opens a draft GitHub release.
 
 ## Versioning and history
 
 `gradle.properties` remains the artifact version source. Runtime metadata and the JAR manifest are generated from it.
 
+- [0.5 Beta release notes](docs/releases/README-0.5.0-beta.md)
+- [0.4 Alpha release notes](docs/releases/README-0.4.0-alpha.md)
+- [0.3 Alpha release notes](docs/releases/README-0.3.0-alpha.md)
 - [0.2 Alpha release notes](docs/releases/README-0.2.0-alpha.md)
 - [0.1 Alpha release notes](docs/releases/README-0.1.0-alpha.md)
+- [Compatibility policy](docs/COMPATIBILITY.md)
 - [Full changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)

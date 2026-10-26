@@ -9,9 +9,9 @@ Milestones describe intended scope, not guaranteed dates. Micup API availability
 | `0.1.0-alpha` | Core bot session and REST foundation | Implemented |
 | `0.2.0-alpha` | Reliability, observability, and request scheduling | Implemented |
 | `0.3.0-alpha` | JDA-style bot API, entities, caches, and permissions | Implemented |
-| `0.4.0-alpha` | Commands, embeds, components, and uploads | Planned |
-| `0.5.0-beta` | Multi-shard operation and performance qualification | Planned |
-| `1.0.0` | Stable core API and documented compatibility | Planned |
+| `0.4.0-alpha` | Commands, embeds, components, and uploads | Implemented |
+| `0.5.0-beta` | Multi-shard operation and performance qualification | Implemented |
+| `1.0.0` | Stable core API and documented compatibility | Release candidate (`1.0.0-rc.1`) |
 
 ## Source compatibility priority
 
@@ -27,7 +27,7 @@ The first supported source fixture is [JdaStyleBot](src/examples/java/net/guneyi
 - [ ] Extend fixtures to the full original BMO command manager, uncached member workflows and shard configuration.
 - [x] Add fluent message create/edit actions and advanced command definitions, including typed autocomplete.
 - [x] Extend webhook/followup builders with compatible fluent editing and ephemeral setters.
-- [ ] Add compatible shard-manager entry points once controlled multi-session operation is implemented.
+- [x] Add compatible shard-manager entry points (`DefaultShardManagerBuilder`, `ShardManager`, `getShardInfo`).
 
 ## 0.1.0-alpha — Foundation
 
@@ -77,39 +77,45 @@ Released as `0.3.0-alpha`. Comparing permission results with live-server fixture
 ## 0.4.0-alpha — Bot interaction toolkit
 
 - [x] Add slash command options, constraints, choices, subcommands/groups and autocomplete helpers.
-- [ ] Add embed, button, select menu, action row, and modal builders.
+- [x] Add embed, button, select menu, action row, and modal builders.
 - [x] Add typed basic interaction option accessors and resolved entity helpers.
 - [x] Add nested command paths and leaf option accessors.
-- [ ] Add submitted modal-field accessors.
+- [x] Add submitted modal-field accessors.
 - [x] Add acknowledgement-aware hooks for deferred originals and basic followups.
 - [x] Extend hooks with followup editing and ephemeral action setters.
-- [ ] Add attachment/component support to webhook actions.
-- [ ] Implement attachment uploads where Micup supports them.
-- [ ] Publish examples for moderation, command routing, and interactive menus.
+- [x] Add component support to webhook actions. Micup refuses files in interaction responses, so hooks do not accept attachments.
+- [x] Implement attachment uploads where Micup supports them (direct multipart message creation).
+- [x] Publish examples for moderation, command routing, and interactive menus.
 
 **Completion criteria:** supported builders validate protocol constraints before submission; tests cover reply/defer/edit/followup flows; unsupported or deployment-disabled features are clearly identified.
 
+Released as `0.4.0-alpha`; see the [components guide](docs/COMPONENTS.md) and [release notes](docs/releases/README-0.4.0-alpha.md). Components v2, modal selects and response files are not offered by Micup and stay unsupported until the server enables them.
+
 ## 0.5.0-beta — Scale and measured performance
 
-- [ ] Add a shard manager with controlled startup, reconnect, and shutdown.
-- [ ] Coordinate rate limits across sessions sharing one bot token in a JVM.
-- [ ] Publish a repeatable load harness and representative workloads.
-- [ ] Measure event throughput, request latency, p95/p99 listener delay, allocation rate, and heap usage.
-- [ ] Test slow consumers, large startup bursts, network interruptions, and long-running operation.
-- [ ] Document extension points for external coordination across processes.
+- [x] Add a shard manager with controlled startup, reconnect, and shutdown.
+- [x] Coordinate rate limits across sessions sharing one bot token in a JVM.
+- [x] Publish a repeatable load harness and representative workloads.
+- [x] Measure event throughput, request latency, p95/p99 listener delay, allocation rate, and heap usage.
+- [x] Test slow consumers, large startup bursts, network interruptions, and long-running operation.
+- [x] Document extension points for external coordination across processes.
 
 **Completion criteria:** reproducible benchmark settings and raw results are published; memory remains within documented configured bounds; recovery behavior is measured. Any JDA comparison must state workload differences and use comparable hardware and JVM settings.
 
+Released as `0.5.0-beta`. Measurements use an in-process mock instance; see [performance](docs/PERFORMANCE.md) and [sharding](docs/SHARDING.md). No JDA comparison was made. A sustained real-bot deployment remains a 1.0 criterion.
+
 ## 1.0.0 — Stable core
 
-- [ ] Finalize supported public interfaces and compatibility policy.
-- [ ] Complete public API documentation and migration examples.
-- [ ] Define the supported Micup protocol/deployment compatibility matrix.
-- [ ] Establish package publishing, artifact signing, and release verification.
+- [x] Finalize supported public interfaces and compatibility policy.
+- [x] Complete public API documentation and migration examples.
+- [x] Define the supported Micup protocol/deployment compatibility matrix.
+- [x] Establish package publishing, artifact signing, and release verification.
 - [ ] Resolve release-blocking defects identified during beta use.
 - [ ] Verify a sustained real-bot deployment under representative load.
 
 **Completion criteria:** documented core features pass integration and recovery tests; known limitations are explicit; published artifacts can be reproduced and consumed using the documented installation paths.
+
+`1.0.0-rc.1` completes the items above: the [compatibility policy and protocol matrix](docs/COMPATIBILITY.md), a locked API snapshot, complete Javadoc enforced by the build, and signed, reproducible release tooling ([releasing](docs/RELEASING.md)). Micup4J is licensed under the Apache License 2.0. The final `1.0.0` waits for the last two items, which need a real deployment.
 
 ## Exploratory work
 

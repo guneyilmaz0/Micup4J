@@ -4,15 +4,15 @@
 
 Micup4J provides a familiar builder, event listener, and REST action API inspired by [JDA](https://github.com/discord-jda/JDA), implemented for Micup's REST and Gateway protocols.
 
-**Release:** `0.3.0-alpha` · **Java:** 21+ · **REST / Gateway:** v1
+**Release:** `1.0.0-rc.1` · **Java:** 21+ · **REST / Gateway:** v1
 
-> Early alpha: the public API may change between releases. Micup4J does not yet provide JDA's full feature set or established performance characteristics.
+> Release candidate: the 1.0 API is frozen and follows the [compatibility policy](docs/COMPATIBILITY.md). Micup4J does not yet provide JDA's full feature set or established performance characteristics.
 
 [Getting started](#getting-started) · [Supported features](#supported-features) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Upgrade guide](UPDATE.md)
 
-## What's new in 0.3
+## What's new in 1.0 RC 1
 
-`0.3.0-alpha` adds typed guild/member/role/channel reads, bounded member pagination, configurable entity caches and permission calculations, moderation and role actions with audit log reasons, indexed member search and Gateway member requests. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
+`1.0.0-rc.1` freezes the public API under a [compatibility policy](docs/COMPATIBILITY.md) with a protocol matrix, documents every supported type and member, and adds signed, reproducible release tooling. `0.5.0-beta` added a shard manager with controlled startup and shutdown, shared REST rate limits across sessions of one token, and a repeatable load harness with published results; see [sharding](docs/SHARDING.md) and [performance](docs/PERFORMANCE.md). `0.4.0-alpha` added buttons, select menus, action rows and modals with typed component and modal events, plus file uploads; see the [components guide](docs/COMPONENTS.md). `0.3.0-alpha` added typed guild/member/role/channel reads, bounded member pagination, configurable entity caches and permission calculations, moderation and role actions with audit log reasons, indexed member search and Gateway member requests. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
 
 ## Supported features
 
@@ -28,9 +28,11 @@ Micup4J provides a familiar builder, event listener, and REST action API inspire
 | Commands | Global/guild slash commands with typed basic value options |
 | Interactions | Priority/deadline-aware replies, defer, edit/read/delete original responses, and followups |
 | Embeds | Validated rich embed builder; channel, reply, and interaction helpers |
+| Components | Buttons, string/entity select menus, action rows, text-input modals and typed component/modal events |
+| Uploads | Up to 10 files per new message through multipart requests |
 | Diagnostics | Typed status/reconnect events and queue, retry, and latency metrics |
 | Guilds | Typed reads, bounded caches, permission resolution, role/member/ban moderation with audit reasons, indexed search and Gateway member requests |
-| Shards | Explicit shard ID and shard count for a single session |
+| Shards | `DefaultShardManagerBuilder` with sequential startup, restarts and shared REST rate limits; explicit shard pairs for single sessions |
 
 Micup does not use Discord's intent system. Micup4J supports ignored event names instead.
 
@@ -57,9 +59,9 @@ From the repository directory:
 On Windows, use `gradlew.bat`. Build outputs are written to `build/libs/`:
 
 ```text
-Micup4J-0.3.0-alpha.jar
-Micup4J-0.3.0-alpha-sources.jar
-Micup4J-0.3.0-alpha-javadoc.jar
+Micup4J-1.0.0-rc.1.jar
+Micup4J-1.0.0-rc.1-sources.jar
+Micup4J-1.0.0-rc.1-javadoc.jar
 ```
 
 The main JAR is a library JAR, not a standalone executable or a bundle of dependencies.
@@ -78,7 +80,7 @@ In your bot's `build.gradle.kts`:
 repositories { mavenCentral() }
 
 dependencies {
-    implementation("net.guneyilmaz0.micup4j:Micup4J:0.3.0-alpha")
+    implementation("net.guneyilmaz0.micup4j:Micup4J:1.0.0-rc.1")
 }
 ```
 
@@ -216,7 +218,7 @@ Import `net.guneyilmaz0.micup4j.events.InteractionCreateEvent` for this handler.
 
 For longer work, submit `deferReply(true)` first and chain `editOriginal(...)` after it completes. Micup requires the initial response within **3 seconds** and permits later edits and followups within **15 minutes**. Those deadlines are enforced by the server. See [Interactions](https://micup.gg/docs/http-api/interactions/).
 
-`respond(type, JsonNode)` exposes supported callback shapes for component updates, autocomplete, and modals. Typed component builders remain planned. The library supports `OptionData` constraints and choices, subcommands/groups, typed autocomplete callbacks, and fluent message creation/editing; see the [command toolkit guide](docs/COMMANDS.md).
+`respond(type, JsonNode)` exposes supported callback shapes for component updates, autocomplete, and modals. Typed component builders, modals and their events are described in the [components guide](docs/COMPONENTS.md). The library supports `OptionData` constraints and choices, subcommands/groups, typed autocomplete callbacks, and fluent message creation/editing; see the [command toolkit guide](docs/COMMANDS.md).
 
 ## Embeds and typed options
 
@@ -271,10 +273,10 @@ If the event queue fills, the client fails instead of silently acknowledging a d
 Not yet included:
 
 - Role position changes, channel/overwrite editing and other entity managers beyond roles, members and bans. Permission results are not yet compared with live-server fixtures.
-- Typed component builders, attachment uploads, and complete webhook/followup action builders. Advanced command options and autocomplete are available.
-- Automatic shard orchestration or distributed rate limit coordination.
+- Components v2 layouts, selects or uploads inside modals, and files in interaction responses; Micup does not offer them yet. Editing a message's files and pre-signed large uploads are not implemented.
+- Distributed (cross-process) REST rate limit coordination; session starts can be coordinated through `SessionStartGate`.
 - Voice connections, audio playback, or music support.
-- A measured JDA performance comparison.
+- A measured JDA performance comparison. Local mock-based measurements are in [PERFORMANCE.md](docs/PERFORMANCE.md).
 
 See [ROADMAP.md](ROADMAP.md) for planned stages and their completion criteria.
 
@@ -306,3 +308,7 @@ The GitHub workflow runs the build on JDK 21. See [CONTRIBUTING.md](CONTRIBUTING
 - [JDA](https://github.com/discord-jda/JDA) — inspiration for the developer-facing API; Micup4J uses its own implementation.
 
 Micup4J is a community project and is not an official Micup or JDA release.
+
+## License
+
+Micup4J is licensed under the [Apache License 2.0](LICENSE).

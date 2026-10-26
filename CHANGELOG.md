@@ -4,6 +4,62 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] — 2026-10-27
+
+### Added
+
+- [Compatibility policy and protocol matrix](docs/COMPATIBILITY.md): semantic versioning from 1.0, the supported API surface, exclusions, deprecations and Micup feature/deployment coverage.
+- A recorded public API snapshot (`api/Micup4J.api`) checked by `ApiSurfaceTest`; accept intended changes with `-PupdateApi`.
+- Complete Javadoc for the supported API; javadoc now runs with `-Xdoclint:all -Werror`, excluding the internal package.
+- Release tooling: POM project, SCM and developer metadata, optional in-memory signing, a local staging repository, `centralBundle` for the Maven Central Portal, `releaseChecksums`, `verifyRelease`, and a tag-triggered [release workflow](.github/workflows/release.yml) that checks reproducibility and opens a draft GitHub release. See [RELEASING.md](docs/RELEASING.md).
+- `OptionData.setRequiredRange` documentation and an explicit `ListenerAdapter` constructor.
+
+### Deprecated
+
+- Legacy aliases kept through 1.x: flat-package `ReadyEvent`/`MessageReceivedEvent` and their `ListenerAdapter` overloads, `entities.ChannelType`, `interactions.SlashCommand`/`CommandOption`/`OptionType`, the `SlashCommand` overloads of `updateCommands`/`updateGuildCommands`, `SlashCommandData.addOption(legacy type)` and `OptionType.toLegacy()`.
+
+### Notes
+
+- Micup4J is licensed under the [Apache License 2.0](LICENSE). The license is declared in the POM and included in every JAR.
+- Release candidate: the API is frozen for 1.0. The final release requires beta feedback and a sustained real-bot deployment.
+
+## [0.5.0-beta] — 2026-10-27
+
+### Added
+
+- `sharding.DefaultShardManagerBuilder` and `ShardManager`: sequential, Ready-gated shard startup through a `SessionStartGate` (1 s spacing by default), start timeouts reported to the error handler, `restart(id)`, partial shard ranges, per-shard listener providers, aggregated guild/status/ping lookups, presence for every shard, and graceful or immediate shutdown that drains the shared REST client last.
+- `SessionStartGate`, the extension point for coordinating session starts across processes.
+- Shared REST rate limiting: `RestClient.shared(...)` and `MicupBuilder.setRestClient(...)` let sessions of one token share buckets, global pacing, 429 cooldowns and queue capacity. Shared clients are never drained or closed by a session.
+- `Micup.getShardInfo()` and `isRestClientShared()`.
+- A repeatable load harness (`./gradlew loadTest`) with event burst, paced listener delay, startup burst, REST burst/sequential, shard start and soak workloads, and published [results](docs/performance/results-0.5.0-beta.json).
+- Resilience tests for large startup bursts within cache bounds, per-shard slow listeners and repeated interruptions across shards.
+- [Sharding](docs/SHARDING.md) and [performance](docs/PERFORMANCE.md) guides.
+
+### Notes
+
+- Measurements use an in-process mock instance over loopback. They are not production figures and include no JDA comparison.
+
+## [0.4.0-alpha] — 2026-10-27
+
+### Added
+
+- Immutable, validated component builders in JDA's packages: `Button`/`ButtonStyle`, `ActionRow` (with `partitionOf`), `StringSelectMenu`/`SelectOption`, `EntitySelectMenu` (user, role, mentionable and channel targets with default values), `TextInput`/`TextInputStyle`, `Modal`, and `entities.emoji.Emoji`. Limits (labels, ids, URLs, option counts, value ranges, five rows, unique custom ids) are checked before submission.
+- `setComponents`, `addComponents`, `setActionRow` and `addActionRow` on message create/edit actions, interaction replies and webhook create/edit actions.
+- Component and modal events: `ButtonInteractionEvent`, `StringSelectInteractionEvent`, `EntitySelectInteractionEvent`, `GenericComponentInteractionCreateEvent` and `ModalInteractionEvent`, with matching `ListenerAdapter` callbacks. Component events expose the source message and its parsed rows, `deferEdit()`, `editMessage`, `editMessageEmbeds`, `editComponents` and `ButtonInteractionEvent.editButton`; modal submissions expose `getValue(id)`/`getValues()` as `ModalMapping`.
+- `replyModal(Modal)` on slash command and component events (callback type 9), and `MessageEditCallbackAction` for callback types 6 and 7.
+- File uploads: `utils.FileUpload`, `MessageCreateAction.addFiles/setFiles`, `MessageChannel.sendFiles` and `Message.replyFiles`, sent as `multipart/form-data` with attachment descriptions and spoiler flags; up to 10 files per message.
+- `OptionData.setRequiredRange(...)`.
+- Compiled [moderation](src/examples/java/net/guneyilmaz0/micup4j/examples/ModerationExample.java) and [interactive menu](src/examples/java/net/guneyilmaz0/micup4j/examples/InteractiveMenuExample.java) examples, and a [components guide](docs/COMPONENTS.md).
+
+### Breaking
+
+- `entities.channel.middleman.MessageChannel` declares `sendFiles(...)`; custom implementations of that interface must add it.
+- Component (type 3) and modal (type 5) interactions are delivered as the new typed event subclasses. They still extend `InteractionCreateEvent` and still reach `onInteractionCreate`.
+
+### Not supported by Micup
+
+- Files in interaction responses and followups, select menus and uploads inside modals, and Components v2 layouts (currently refused with `FEATURE_TEMPORARILY_DISABLED`) are not offered. Editing a message's files and the pre-signed large-upload flow are not implemented.
+
 ## [0.3.0-alpha] — 2026-10-27
 
 ### Added
