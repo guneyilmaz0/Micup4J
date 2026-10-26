@@ -83,22 +83,29 @@ public final class Message implements ISnowflake {
         return guild == null ? null : guild.getMemberById(author.id());
     }
 
-    public RestAction<Message> reply(String content) {
-        return client.getRestClient().request("POST", "/channels/" + Json.id(channelId) + "/messages",
-                        Json.object().put("content", content).set("message_reference", Json.object().put("message_id", id)))
-                .map(data -> Message.fromContext(client, data, guildId));
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction reply(String content) {
+        if (content == null || content.isBlank()) throw new IllegalArgumentException("Message content is required");
+        return new net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction(client,
+                "/channels/" + Json.id(channelId) + "/messages", guildId,
+                Json.object().put("content", content).set("message_reference", Json.object().put("message_id", id)));
     }
 
-    public RestAction<Message> replyEmbeds(MessageEmbed... embeds) {
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction replyEmbeds(MessageEmbed... embeds) {
         var body = net.guneyilmaz0.micup4j.internal.MessagePayload.embeds(embeds);
         body.set("message_reference", Json.object().put("message_id", Json.id(id)));
-        return client.getRestClient().request("POST", "/channels/" + Json.id(channelId) + "/messages", body)
-                .map(data -> Message.fromContext(client, data, guildId));
+        return new net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction(client,
+                "/channels/" + Json.id(channelId) + "/messages", guildId, body);
     }
 
-    public RestAction<Message> editMessage(String content) {
-        return client.getRestClient().request("PATCH", "/channels/" + Json.id(channelId) + "/messages/" + Json.id(id), Json.object().put("content", content))
-                .map(data -> Message.fromContext(client, data, guildId));
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageEditAction editMessage(String content) {
+        return new net.guneyilmaz0.micup4j.requests.restaction.MessageEditAction(client,
+                "/channels/" + Json.id(channelId) + "/messages/" + Json.id(id), guildId, Json.object().put("content", content));
+    }
+
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageEditAction editMessageEmbeds(MessageEmbed... embeds) {
+        return new net.guneyilmaz0.micup4j.requests.restaction.MessageEditAction(client,
+                "/channels/" + Json.id(channelId) + "/messages/" + Json.id(id), guildId,
+                net.guneyilmaz0.micup4j.internal.MessagePayload.embeds(embeds));
     }
 
     public RestAction<Void> delete() {

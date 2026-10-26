@@ -39,15 +39,15 @@ public class MessageChannel implements net.guneyilmaz0.micup4j.entities.channel.
         return id;
     }
 
-    public RestAction<Message> sendMessage(String content) {
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendMessage(String content) {
         if (content == null || content.isBlank()) throw new IllegalArgumentException("Message content is required");
-        return client.getRestClient().request("POST", "/channels/" + id + "/messages", Json.object().put("content", content))
-                .map(data -> Message.fromContext(client, data, guildId));
+        return new net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction(client,
+                "/channels/" + id + "/messages", guildId, Json.object().put("content", content));
     }
 
-    public RestAction<Message> sendMessageEmbeds(MessageEmbed... embeds) {
-        return client.getRestClient().request("POST", "/channels/" + id + "/messages",
-                net.guneyilmaz0.micup4j.internal.MessagePayload.embeds(embeds)).map(data -> Message.fromContext(client, data, guildId));
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendMessageEmbeds(MessageEmbed... embeds) {
+        return new net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction(client,
+                "/channels/" + id + "/messages", guildId, net.guneyilmaz0.micup4j.internal.MessagePayload.embeds(embeds));
     }
 
     public RestAction<Message> retrieveMessageById(String messageId) {

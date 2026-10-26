@@ -8,8 +8,8 @@ import net.guneyilmaz0.micup4j.requests.RestAction;
 public interface MessageChannel extends ISnowflake {
     String getAsMention();
     ChannelType getType();
-    RestAction<Message> sendMessage(String content);
-    RestAction<Message> sendMessageEmbeds(MessageEmbed... embeds);
+    net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendMessage(String content);
+    net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendMessageEmbeds(MessageEmbed... embeds);
     RestAction<Message> retrieveMessageById(String id);
     default RestAction<Message> retrieveMessageById(long id) { return retrieveMessageById(Long.toUnsignedString(id)); }
 }
