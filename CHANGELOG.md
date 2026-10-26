@@ -29,6 +29,17 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - Builder/runtime presence controls, `OnlineStatus` and common `Activity` factories rendered as Micup custom-status text.
 - Coalesced presence scheduling, authentication gating and reconnect restoration; cancelled Gateway timers are removed immediately.
 - A compiled BMO-style avatar fixture, local embed verification, and lifecycle/presence/mention regression tests.
+- `RestAction` delays and combinators: `queueAfter`, `submitAfter`, `completeAfter`, `delay`, `onSuccess`, `onErrorMap`, `onErrorFlatMap`, `and`, `zip`, `allOf`, `accumulate`, default callbacks, and `utils.concurrent.DelayedCompletableFuture`.
+- `InteractionHook` webhook actions (`WebhookMessageCreateAction`, `WebhookMessageEditAction`): `setEphemeral`, `getInteraction`, `getJDA`, `editMessageById`, `deleteMessageById`, `retrieveMessageById`, `"@original"` routing, plus `ReplyCallbackAction` `setEmbeds`/`addEmbeds`/`addContent` and an `Interaction` interface.
+- Graceful shutdown: `shutdown()` drains REST work within `RestConfig.shutdownTimeout`; `awaitShutdown` overloads, `Status.SHUTTING_DOWN`, `events.session.ShutdownEvent` and `ListenerAdapter.onShutdown`.
+- Typed `MessageUpdateEvent`, `MessageDeleteEvent`, `GenericMessageEvent`, `GuildMemberJoinEvent`, `GuildMemberRemoveEvent`, `GenericGuildMemberEvent` and matching `ListenerAdapter` callbacks.
+- Kotlin compatibility sources are compiled as part of `check`; Kotlin stays out of the published POM.
+
+### Breaking
+
+- `InteractionHook.sendMessage`, `editOriginal` and `editOriginalEmbeds` return new action types. Source is compatible; the JVM descriptors changed, so recompile.
+- `Status` gains `SHUTTING_DOWN`; exhaustive switches over it no longer compile without a case.
+- `RestConfig` gains a seventh record component, `shutdownTimeout`. The six-argument constructor remains, but six-component record patterns no longer match.
 
 ### Changed
 
@@ -43,6 +54,17 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - Canonical channel types move to `entities.channel.ChannelType`; legacy constants remain a facade. Recompile alpha consumers.
 - Message channel handles now use Gateway `channel_type` when available, preserving group/private and uncached voice/text distinctions.
 - Gateway tests now separately await authentication and Ready delivery before injecting synthetic followup events, removing a startup-order race in the fixture.
+- `shutdown()` is graceful and refuses new REST calls with `RejectedExecutionException`; `shutdownNow()` and `close()` cancel immediately. `complete()`, `completeAfter()` and `awaitShutdown` on the internal `micup4j-gateway`, `micup4j-rest-scheduler` and `micup4j-delay` threads throw `IllegalStateException`.
+- Events no longer deep-copy payloads per getter. `getData()` still copies; `selectedOptions()` returns a shared read-only node.
+- `Message.reply` validates the message id, and `editMessage(null)` sends an empty string (JDA rejects null).
+
+### Fixed
+
+- Role, channel and member events and `GUILD_UPDATE` for uncached guilds no longer insert placeholder guilds or evict real ones; an uncached `GUILD_UPDATE` delivers a guild built from its payload.
+- Cached lookups return bound snapshots without per-call member copies, and `getTextChannelById` is constant time.
+- Cache work and payload parsing no longer hold locks used by the Gateway thread.
+- Malformed typed-event payloads (for example a blank interaction token or invalid snowflakes in `MESSAGE_CREATE`) are delivered as plain `GenericEvent` with a reported failure instead of failing the session.
+- Cancelling a `queueAfter` handle invokes no callback, matching JDA.
 
 Version remains `0.2.0-alpha` until the next release is explicitly prepared. Indexed member search, wider mutation coverage and live-server fixture qualification remain open in the 0.3 roadmap.
 

@@ -69,6 +69,37 @@ Cancellation is best effort once a request has started: a server may already hav
 
 Callbacks remain single-use locally after a response is submitted, even when submission fails. This conservative guard avoids accidentally sending a second initial response after an uncertain outcome.
 
+## Combinators and delays
+
+`RestAction` supports JDA-style composition. All are lazy; nothing is sent until the composed action is executed.
+
+| Operation | Behavior |
+| --- | --- |
+| `queue(null)`, `queue(success, null)` | A null callback falls back to `RestAction.setDefaultSuccess` / `setDefaultFailure` |
+| `queueAfter`, `submitAfter`, `completeAfter` | Execute after a delay; `submitAfter` returns a `utils.concurrent.DelayedCompletableFuture` |
+| `delay(...)` | Delays the result of the preceding action |
+| `onSuccess`, `onErrorMap`, `onErrorFlatMap` | Side effects and error recovery |
+| `and`, `zip`, `allOf`, `accumulate` | Combine several actions |
+
+Cancelling the handle returned by `queueAfter` invokes neither callback, as in JDA. `submitAfter` futures still complete with `CancellationException`. A delayed action that fires after the client has shut down fails with `RejectedExecutionException`.
+
+`complete()`, `completeAfter()` and `awaitShutdown` throw `IllegalStateException` when called on the internal `micup4j-gateway`, `micup4j-rest-scheduler` or `micup4j-delay` threads, because blocking there could stall the client. The `micup4j-events` listener thread is not guarded, so blocking in listeners is allowed as in JDA; `queue` or `submit` is still preferred.
+
+## Shutdown drain
+
+`shutdown()` stops accepting new REST work and drains queued and in-flight requests. The drain is bounded by `RestConfig.shutdownTimeout` (default 30 seconds, set with `withShutdownTimeout`). While draining, the status is `SHUTTING_DOWN` and new REST calls fail with `RejectedExecutionException`. `shutdownNow()` and `close()` cancel work immediately.
+
+```java
+client.shutdown();
+if (!client.awaitShutdown(Duration.ofSeconds(10))) {
+    client.shutdownNow();
+}
+```
+
+`awaitShutdown()`, `awaitShutdown(Duration)` and `awaitShutdown(long, TimeUnit)` return whether shutdown completed. `RestConfig` gained a seventh component, `shutdownTimeout`; the six-argument constructor is kept.
+
+`awaitShutdown()` and `termination()` may return before the final `StatusChangeEvent(SHUTDOWN)` and `ShutdownEvent` have reached listeners. A shutdown hook should not rely on `onShutdown` having run when `awaitShutdown` returns.
+
 ## Metrics
 
 ```java

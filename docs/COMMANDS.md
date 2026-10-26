@@ -72,7 +72,7 @@ Channel send methods and message reply methods return `MessageCreateAction`; mes
 
 `setContent` replaces content (`null` clears it), `setEmbeds` replaces embeds, and `addEmbeds` appends them. Embed setters accept varargs or collections and enforce the 10-embed limit before changing the payload. `setEmbeds()` explicitly clears embeds. Create requests need nonblank content or at least one embed. Partial edit requests omit untouched fields; the server validates the resulting message. Replies preserve their `message_reference`, and returned messages retain guild context even when the HTTP response omits `guild_id`.
 
-Actions are lazy. Setters stop accepting changes after the first valid execution; repeated execution sends the same frozen payload. Validation failures before execution can be repaired. Cancellation and errors use the existing `RestAction` behavior. These fluent actions currently cover ordinary channel messages; full webhook/followup action builders, uploads and components remain open roadmap work.
+Actions are lazy. Setters stop accepting changes after the first valid execution; repeated execution sends the same frozen payload. Validation failures before execution can be repaired. Cancellation and errors use the existing `RestAction` behavior. These fluent actions currently cover ordinary channel messages; webhook actions are described in the [compatibility guide](JDA-COMPATIBILITY.md); uploads and components remain open roadmap work.
 
 ## Verification and references
 

@@ -11,6 +11,14 @@ The checkout now targets JDA-style source usage. This is not a new prepared rele
 - Import canonical channel types from `entities.channel.ChannelType`.
 - No-argument `awaitReady()` has no automatic timeout; use `awaitReady(Duration)` for a bound.
 - Existing flat event handlers remain bridged. New code can use the JDA-style event subpackages and `onSlashCommandInteraction`.
+- **Binary break:** `InteractionHook.sendMessage`, `editOriginal` and `editOriginalEmbeds` now return `WebhookMessageCreateAction`/`WebhookMessageEditAction`. Source assignments to `RestAction<Message>` still compile; recompile consumers.
+- **Source break:** `Status` has a new `SHUTTING_DOWN` constant. Add a case to exhaustive `switch` expressions over `Status`.
+- **Source break:** `RestConfig` has a seventh component, `shutdownTimeout` (default 30 seconds). Construct it with the existing six-argument constructor or `withShutdownTimeout`; update any six-part record patterns.
+- Shutdown hooks should call `client.shutdown(); client.awaitShutdown(Duration.ofSeconds(10));`. `shutdown()` now drains queued REST work and rejects new work with `RejectedExecutionException`; use `shutdownNow()` or `close()` for an immediate stop.
+- `complete()`, `completeAfter()` and `awaitShutdown` throw `IllegalStateException` on the internal `micup4j-gateway`, `micup4j-rest-scheduler` and `micup4j-delay` threads. The `micup4j-events` listener thread is not guarded, so blocking in listeners is allowed as in JDA, though `queue` or `submit` is still preferred.
+- `awaitShutdown()` and `termination()` may return before the final `StatusChangeEvent(SHUTDOWN)` and `ShutdownEvent` reach listeners; a shutdown hook must not rely on `onShutdown` having run.
+- `editMessage(null)` now sends an empty string rather than failing; `Message.reply` validates the message id.
+- Malformed typed-event payloads now arrive as plain `GenericEvent`; override `onGenericEvent` if you need to observe them.
 - Micup public deferred responses have no placeholder: create the original with `hook.editOriginal(...)` before retrieving it.
 
 ## Current release

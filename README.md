@@ -104,6 +104,8 @@ import net.guneyilmaz0.micup4j.MicupBuilder;
 import net.guneyilmaz0.micup4j.events.MessageReceivedEvent;
 import net.guneyilmaz0.micup4j.hooks.ListenerAdapter;
 
+import java.time.Duration;
+
 public class Bot {
     public static void main(String[] args) throws Exception {
         var client = MicupBuilder.createDefault(System.getenv("MICUP_TOKEN"))
@@ -118,7 +120,14 @@ public class Bot {
             })
             .build();
 
-        Runtime.getRuntime().addShutdownHook(new Thread(client::shutdown));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            client.shutdown();
+            try {
+                client.awaitShutdown(Duration.ofSeconds(10));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
         try (client) {
             client.awaitReady();
             client.termination().join();
@@ -127,7 +136,7 @@ public class Bot {
 }
 ```
 
-`build()` starts connecting asynchronously. `awaitReady()` waits up to 60 seconds for the initial Ready event; it does not wait for every guild startup dispatch. `termination()` completes on shutdown and fails exceptionally on a permanent client failure.
+`build()` starts connecting asynchronously. `awaitReady()` waits up to 60 seconds for the initial Ready event; it does not wait for every guild startup dispatch. `termination()` completes on shutdown and fails exceptionally on a permanent client failure. Note that `awaitShutdown()` and `termination()` may return before the final `StatusChangeEvent(SHUTDOWN)` and `ShutdownEvent` reach listeners, so a shutdown hook should not rely on `onShutdown` having run.
 
 ### Run the included example
 

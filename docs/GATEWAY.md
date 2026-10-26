@@ -39,7 +39,7 @@ Both event classes live in `net.guneyilmaz0.micup4j.events`. They have sequence 
 
 Reasons distinguish a server reconnect request, transport error, missed heartbeat ACK, handshake timeout, invalid payload, and close frame. A close diagnostic contains its numeric code, never the server-provided reason text or authentication payload.
 
-Diagnostics share the bounded listener executor and are best effort. They can be omitted when the queue has little capacity or shutdown interrupts delivery. Use `getStatus()`, `getMetrics()`, and `termination()` to observe terminal state reliably; do not depend on receiving a final status callback during shutdown.
+Diagnostics share the bounded listener executor and are best effort. They can be omitted when the queue has little capacity or shutdown interrupts delivery. Use `getStatus()`, `getMetrics()`, and `termination()` to observe terminal state reliably. A graceful `shutdown()` reports `SHUTTING_DOWN` while REST work drains, then delivers a `StatusChangeEvent` for `SHUTDOWN` and one `events.session.ShutdownEvent` (`ListenerAdapter.onShutdown`); delivery stays best effort, particularly after `shutdownNow()`.
 
 `ClientMetrics` includes reconnect count, queued events, delivered events, listener failures, latest queue delay, REST counters, and Gateway heartbeat latency.
 
@@ -66,6 +66,19 @@ Diagnostics share the bounded listener executor and are best effort. They can be
 ## Presence (unreleased)
 
 Builder/runtime presence now uses Identify's initial presence and authenticated opcode 3. Updates coalesce to the latest desired state, are paced at least 4.1 seconds apart on one socket, and are restored after Ready/Resumed. Micup publishes custom status rather than Discord activities; see [presence mapping and limits](PRESENCE.md).
+
+## Typed message and member events (unreleased)
+
+Gateway `MESSAGE_UPDATE`, `MESSAGE_DELETE`, `GUILD_MEMBER_ADD` and `GUILD_MEMBER_REMOVE` dispatches are delivered as `MessageUpdateEvent`, `MessageDeleteEvent`, `GuildMemberJoinEvent` and `GuildMemberRemoveEvent`, with `GenericMessageEvent`/`GenericGuildMemberEvent` parents and matching `ListenerAdapter` callbacks. See the [compatibility guide](JDA-COMPATIBILITY.md).
+
+- Update events carry the complete current message; there is no previous content.
+- `MessageDeleteEvent.getContentRaw()` and `getAuthorId()` are nullable: Micup omits them when an admin, moderator or system removed the message.
+- `GUILD_MEMBER_REMOVE` carries only the user id, so the account is resolved from held state; `getMember()` is the pre-removal snapshot or null.
+- In guilds above 250 members, passive sessions receive member add, update and remove dispatches only for their own user.
+
+**Malformed payloads.** If a typed event payload is malformed (for example a blank interaction token or an invalid snowflake in `MESSAGE_CREATE`), the dispatch is delivered as a plain `GenericEvent` and a failure is reported through the listener failure path. The session is not failed.
+
+`GenericEvent.getData()` still returns a copy; typed getters read the payload without per-call deep copies. Subclasses use the protected `rawData()` accessor.
 
 ## Delivery and shutdown
 

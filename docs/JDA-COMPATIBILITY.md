@@ -16,11 +16,20 @@ import net.guneyilmaz0.micup4j.hooks.ListenerAdapter;
 import net.guneyilmaz0.micup4j.interactions.commands.OptionType;
 import net.guneyilmaz0.micup4j.interactions.commands.build.Commands;
 
+import java.time.Duration;
+
 class Bot extends ListenerAdapter {
     public static void main(String[] args) throws InterruptedException {
         Micup client = MicupBuilder.createDefault(System.getenv("MICUP_TOKEN"))
             .addEventListeners(new Bot()).build().awaitReady();
-        Runtime.getRuntime().addShutdownHook(new Thread(client::shutdown));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            client.shutdown();
+            try {
+                client.awaitShutdown(Duration.ofSeconds(10));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
         // Run when definitions change; this replaces the entire global command set.
         client.updateCommands().addCommands(
             Commands.slash("hello", "Say hello")
@@ -43,6 +52,10 @@ Micup has no Discord intents. Remove Discord intent configuration instead of exp
 | --- | --- |
 | `createDefault/createLight`, listener registration, `build().awaitReady()` | Real Micup lifecycle; no-argument `awaitReady` waits until ready/failure and declares `InterruptedException` |
 | `events.session.ReadyEvent` and `events.message.MessageReceivedEvent` | Typed Gateway events; existing flat-package listener overrides still receive events through a bridge |
+| `events.StatusChangeEvent`, `events.session.ShutdownEvent`, `ListenerAdapter.onShutdown` | Listeners receive the final `SHUTTING_DOWN -> SHUTDOWN` status change and one `ShutdownEvent` (`getTimeShutdown()`, `getCode()` = 1000, the raw close code as in JDA). After `shutdown()` they run on the event thread after earlier events; after `shutdownNow()` they run on a `micup4j-shutdown` virtual thread after a bounded, best-effort wait for in-flight listeners to finish, possibly after the call returns. Discord's `CloseCode` enum and `getCloseCode()` are intentionally absent |
+| `RestAction.queueAfter` cancellation | Cancelling the returned handle invokes neither callback, as in JDA; a request cancelled by other means still reaches the failure callback with `CancellationException`, and `submitAfter` futures still complete with `CancellationException` |
+| `onMessageUpdate`, `onMessageDelete`, `onGenericMessage` | Typed `MessageUpdateEvent`, `MessageDeleteEvent` and `GenericMessageEvent`. Update carries the complete current message and no previous content. `MessageDeleteEvent.getContentRaw()` and `getAuthorId()` are Micup-only and nullable: the server omits them for admin, moderation or system deletions |
+| `onGuildMemberJoin`, `onGuildMemberRemove`, `GenericGuildMemberEvent` | `GuildMemberRemoveEvent.getMember()` is the pre-removal snapshot or null; `getUser()` is a minimal id-only user when the account is not cached, because the payload carries only the id. In guilds above 250 members, passive sessions receive member add/update/remove only for their own user |
 | `events.interaction.command.SlashCommandInteractionEvent` | Routed for command interactions only; legacy `onInteractionCreate` remains available |
 | `event.getJDA()` | Alias returning the actual `Micup` session; `getMicup()` remains available |
 | `getGuildById`, `getMemberById`, `getRoleById`, cached text-channel lookups | Object or null on a cache miss; string and unsigned-long ID overloads where provided |
@@ -60,6 +73,10 @@ Micup has no Discord intents. Remove Discord intent configuration instead of exp
 | `event.getOption/getOptions` | `OptionMapping` with strings, booleans, numeric conversions and resolved user/member/role/channel access |
 | `reply(...).setEphemeral(true)` / `replyEmbeds(...)` | Fluent lazy callback action; completion returns `InteractionHook` |
 | `deferReply().queue(hook -> ...)` / `getHook()` | Acknowledgement barrier, original response operations and basic followups |
+| `InteractionHook.sendMessage/sendMessageEmbeds`, `editOriginal*`, `editMessageById`, `editMessageEmbedsById`, `deleteMessageById`, `retrieveMessageById`, `setEphemeral`, `getInteraction`, `getJDA` | Return `WebhookMessageCreateAction`/`WebhookMessageEditAction`; the `"@original"` id routes to the original response. `setEphemeral` is ignored on the first send after a defer, because the deferral fixed visibility; an edit keeps the first answer's visibility. `ReplyCallbackAction` also has `setEmbeds`, `addEmbeds` and `addContent`. `Interaction` is a common interface of the interaction events |
+| `RestAction.queue(null)`, `queue(success, null)`, `setDefaultSuccess/Failure` | Null callbacks use the configured defaults |
+| `RestAction.queueAfter/submitAfter/completeAfter`, `delay`, `onSuccess`, `onErrorMap`, `onErrorFlatMap`, `and`, `zip`, `allOf`, `accumulate` | Implemented; delayed futures are `utils.concurrent.DelayedCompletableFuture`. See [REST.md](REST.md#combinators-and-delays). `complete()`, `completeAfter()` and `awaitShutdown` throw `IllegalStateException` when called on a Micup scheduler thread |
+| `Micup.shutdown/shutdownNow/close`, `awaitShutdown(...)`, `Status.SHUTTING_DOWN` | Graceful drain bounded by `RestConfig.shutdownTimeout`; see [REST.md](REST.md#shutdown-drain). Exhaustive `Status` switches need a `SHUTTING_DOWN` case |
 | Root `EmbedBuilder`, `Color`, common author/footer overloads, copies and clearing | Micup validation, with immutable built embeds |
 | Root `Permission`, `member.hasPermission`, `getPermissions` | JDA-style names mapped to Micup bits, using the existing resolver |
 | `getMentions().getUsers/getMembers/getRoles/getChannels` | Active payload mentions, text order, immutable lists and cache-only member/role/channel resolution |
@@ -81,7 +98,7 @@ event.deferReply(true).queue(hook ->
 
 Reply/defer actions are mutable before their first submission and frozen afterwards. The interaction still allows only one initial callback. HTTP success settles the shared acknowledgement barrier before the hook is exposed to user callback consumers. Hook actions queued while acknowledgement is pending wait on an independent future; cancelling such an action does not cancel the initial callback. Failed acknowledgement prevents subsequent hook HTTP requests.
 
-The first `hook.sendMessage(...)` after a defer creates the original response with PATCH; later sends create public followups. Set the original response's ephemeral state on the initial reply/defer. Followup ephemeral setters and the full webhook action hierarchy remain future work. Avoid concurrent writes when their order matters; compose actions or wait for completion.
+The first `hook.sendMessage(...)` after a defer creates the original response with PATCH; later sends create public followups. Set the original response's ephemeral state on the initial reply/defer; `setEphemeral` on the first send after a defer is ignored. Followups are `WebhookMessageCreateAction` values and edits are `WebhookMessageEditAction` values; attachments and components remain future work. Avoid concurrent writes when their order matters; compose actions or wait for completion.
 
 **Micup has no public deferred placeholder.** A public `deferReply()` followed immediately by `hook.retrieveOriginal()` cannot return a message before one exists. Use `editOriginal(...)` or the first `sendMessage(...)` to create it. Micup4J returns an explicit error for this unsupported placeholder flow rather than creating a visible synthetic message. After creating the original, retrieval and deletion are available. Private deferred response retrieval is forwarded to the server, because the documented no-placeholder rule specifically describes public responses.
 
@@ -150,10 +167,11 @@ Builder and runtime presence setters now publish the real Micup presence payload
 - The older flat event types, `SlashCommand`, basic `CommandOption`, `entities.EmbedBuilder`, and `getOptionValue` remain available. Avoid wildcard imports that bring both legacy and JDA-style class names into scope.
 - No-argument `awaitReady()` now waits without the previous 60-second bound; `awaitReady(Duration)` retains explicit timeout behavior.
 - Recompile consumers. This is alpha source adaptation, not binary compatibility with previous JARs.
+- Replace JVM shutdown hooks that only call `client.shutdown()` with `client.shutdown(); client.awaitShutdown(Duration.ofSeconds(10));` so queued REST work can drain before the JVM exits.
 
 ## Remaining compatibility work
 
-Streaming/rich-presence metadata, member cache flag adapters, advanced entity events and mention types, component builders, uploads, complete webhook actions, user DMs and shard managers still need implementation. Discord-only capabilities will not be silently emulated where Micup has no equivalent.
+Streaming/rich-presence metadata, member cache flag adapters, advanced entity events and mention types, component builders, uploads, attachment/component support for webhook actions, user DMs and shard managers still need implementation. Discord-only capabilities will not be silently emulated where Micup has no equivalent.
 
 There is no promise that replacing imports and the builder is sufficient for every existing bot. The compiled example and integration tests are the current coverage evidence. Extend compatibility with runnable source fixtures as more of the roadmap is implemented.
 

@@ -72,6 +72,10 @@ Enabled caches require their state events. Building a cached client that ignores
 
 `rolesComplete` and `channelsComplete` describe collection coverage of the last observed snapshot, and become false on truncation or disabled storage. Channels are only the channels visible to this bot. Members are always a bounded observed subset. These flags do not guarantee freshness: event filters, subscriptions, connection loss and nonretained Gateway payloads can leave observed memberships stale. Member-list subscriptions and caches of other users' presences are not implemented. The session's own [presence manager](PRESENCE.md) does not create a presence cache. Retrieve current membership before sensitive decisions.
 
+## Events for uncached guilds
+
+Role, channel and member events for a guild that is not cached do not insert placeholder guilds and never evict a real cached guild. A `GUILD_UPDATE` for an uncached guild delivers a guild built from the event payload without caching it. Cached lookups return bound snapshots without per-call member copies, and `getTextChannelById` is a constant-time lookup. Cache updates do not hold the lock used by the Gateway thread.
+
 ## Permission masks
 
 ```java

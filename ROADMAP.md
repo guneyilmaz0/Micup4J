@@ -26,7 +26,7 @@ The first supported source fixture is [JdaStyleBot](src/examples/java/net/guneyi
 - [x] Add BMO-style cached-mention/avatar-color fixtures, typed guild lifecycle events, and basic presence configuration.
 - [ ] Extend fixtures to the full original BMO command manager, uncached member workflows and shard configuration.
 - [x] Add fluent message create/edit actions and advanced command definitions, including typed autocomplete.
-- [ ] Extend webhook/followup builders with compatible fluent editing and ephemeral setters.
+- [x] Extend webhook/followup builders with compatible fluent editing and ephemeral setters.
 - [ ] Add compatible shard-manager entry points once controlled multi-session operation is implemented.
 
 ## 0.1.0-alpha — Foundation
@@ -82,7 +82,8 @@ The first implementation is available in the source checkout under **Unreleased*
 - [x] Add nested command paths and leaf option accessors.
 - [ ] Add submitted modal-field accessors.
 - [x] Add acknowledgement-aware hooks for deferred originals and basic followups.
-- [ ] Extend hooks with full followup editing, ephemeral action setters and attachment/component support.
+- [x] Extend hooks with followup editing and ephemeral action setters.
+- [ ] Add attachment/component support to webhook actions.
 - [ ] Implement attachment uploads where Micup supports them.
 - [ ] Publish examples for moderation, command routing, and interactive menus.
 
