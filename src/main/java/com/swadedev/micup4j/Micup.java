@@ -140,6 +140,7 @@ public final class Micup implements AutoCloseable {
                 }
             }
         });
+        KeepAlive.holdUntil(terminated);
     }
 
     /**

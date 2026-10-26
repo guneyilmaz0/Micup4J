@@ -4,6 +4,10 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 
 ## [Unreleased]
 
+### Fixed
+
+- The JVM no longer exits when `main` returns right after `build()`. As in JDA, a shared non-daemon `micup4j-keepalive` thread keeps the process alive from `MicupBuilder.build()` or `DefaultShardManagerBuilder.build()` until the session or shard manager shuts down or fails permanently.
+
 ## [1.0.0-rc.1] — 2026-10-27
 
 ### Breaking

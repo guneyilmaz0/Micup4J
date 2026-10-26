@@ -53,6 +53,8 @@ final class DefaultShardManager implements ShardManager {
 
     void start() {
         queue.addAll(ids);
+        // Shards are built later on a virtual thread, so hold the JVM from build() until the manager terminates.
+        com.swadedev.micup4j.internal.KeepAlive.holdUntil(terminated);
         starter = Thread.ofVirtual().name("micup4j-shard-starter").start(this::runStarter);
     }
 

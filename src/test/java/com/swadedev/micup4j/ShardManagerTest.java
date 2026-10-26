@@ -120,6 +120,18 @@ class ShardManagerTest extends GatewayFixture {
         assertThrows(IllegalStateException.class, () -> manager.restart(0));
     }
 
+    @Test void theManagerKeepsTheJvmAliveFromBuildUntilShutdown() throws Exception {
+        int before = com.swadedev.micup4j.internal.KeepAlive.holders();
+        manager = builder(1).build();
+        assertTrue(com.swadedev.micup4j.internal.KeepAlive.holders() > before, "build() must hold the JVM before any shard starts");
+        assertFalse(KeepAliveTest.keepAliveThread().isDaemon());
+        manager.shutdownNow();
+        assertTrue(manager.awaitShutdown(Duration.ofSeconds(5)));
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (com.swadedev.micup4j.internal.KeepAlive.holders() > before && System.nanoTime() < deadline) Thread.sleep(10);
+        assertEquals(before, com.swadedev.micup4j.internal.KeepAlive.holders(), "the manager and its shards must release after shutdown");
+    }
+
     @Test void buildersValidateShardRangesAndSharedClients() {
         assertThrows(IllegalArgumentException.class, () -> builder(2).setShards(0, 2).build());
         assertThrows(IllegalArgumentException.class, () -> builder(0));
