@@ -97,9 +97,12 @@ public final class Micup implements AutoCloseable {
     /** Set once by {@link #shutdown()} or {@link #shutdownNow()}; guarded by {@link #lifecycle} for writes. */
     private volatile boolean shutdownRequested;
     private final Duration shutdownTimeout;
+    /** False when the REST client is shared with other sessions; its owner then drains and closes it. */
+    private final boolean ownsRest;
+    private final int shardId, shardCount;
     private final CompletableFuture<HttpResponse<String>> discovery;
 
-    Micup(String token, URI origin, List<EventListener> listeners, List<String> ignored, int restCapacity, int eventCapacity, int shardId, int shardCount, Consumer<Throwable> handler, RestConfig restConfig, GatewayConfig gatewayConfig, CachePolicy cachePolicy, net.guneyilmaz0.micup4j.managers.Presence.State initialPresence) {
+    Micup(String token, URI origin, List<EventListener> listeners, List<String> ignored, int restCapacity, int eventCapacity, int shardId, int shardCount, Consumer<Throwable> handler, RestConfig restConfig, GatewayConfig gatewayConfig, CachePolicy cachePolicy, net.guneyilmaz0.micup4j.managers.Presence.State initialPresence, RestClient sharedRest) {
         this.listeners = new CopyOnWriteArrayList<>(listeners);
         entityCache = new EntityCache(cachePolicy, this);
         presence = new net.guneyilmaz0.micup4j.managers.Presence(this, initialPresence);
@@ -107,7 +110,9 @@ public final class Micup implements AutoCloseable {
         this.eventCapacity = eventCapacity;
         events = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(eventCapacity),
                 Thread.ofPlatform().daemon().name("micup4j-events").factory(), new ThreadPoolExecutor.AbortPolicy());
-        rest = new RestClient(http, token, restCapacity, restConfig);
+        ownsRest = sharedRest == null;
+        rest = ownsRest ? new RestClient(http, token, restCapacity, restConfig) : sharedRest;
+        this.shardId = shardId; this.shardCount = shardCount;
         shutdownTimeout = restConfig.shutdownTimeout();
         URI url = origin.resolve("/.well-known/fluxer");
         discovery = http.sendAsync(HttpRequest.newBuilder(url).timeout(Duration.ofSeconds(20)).header("Accept", "application/json").header("User-Agent", net.guneyilmaz0.micup4j.MicupVersion.getUserAgent()).GET().build(), HttpResponse.BodyHandlers.ofString());
@@ -136,6 +141,33 @@ public final class Micup implements AutoCloseable {
             }
         });
     }
+
+    /**
+     * Returns this session's shard, as JDA's {@code getShardInfo()}.
+     *
+     * @return the shard id and count; {@code [0, 1]} for an unsharded session
+     */
+    public ShardInfo getShardInfo() { return new ShardInfo(shardId, Math.max(1, shardCount)); }
+
+    /**
+     * A session's shard assignment.
+     *
+     * @param shardId    the zero-based shard id
+     * @param shardTotal the total number of shards
+     */
+    public record ShardInfo(int shardId, int shardTotal) {
+        public int getShardId() { return shardId; }
+        public int getShardTotal() { return shardTotal; }
+        /** @return {@code [id / total]}, as JDA formats it */
+        public String getShardString() { return "[" + shardId + " / " + shardTotal + "]"; }
+    }
+
+    /**
+     * Returns whether this session shares its REST client with other sessions.
+     *
+     * @return {@code true} when the client was supplied through {@link MicupBuilder#setRestClient(RestClient)}
+     */
+    public boolean isRestClientShared() { return !ownsRest; }
 
     /**
      * Returns the presence manager of this session.
@@ -1179,7 +1211,7 @@ public final class Micup implements AutoCloseable {
             updateStatus(Status.FAILED);
             ready.completeExceptionally(error);
             if (gateway != null) gateway.close();
-            rest.close();
+            if (ownsRest) rest.close();
             events.shutdown();
             clearEntityState();
             http.shutdown();
@@ -1231,7 +1263,7 @@ public final class Micup implements AutoCloseable {
         synchronized (lifecycle) {
             if (closed) return;
             if (!shutdownRequested) beginShutdown();
-            rest.close();
+            if (ownsRest) rest.close();
             events.shutdownNow();
             finish(true);
         }
@@ -1323,7 +1355,7 @@ public final class Micup implements AutoCloseable {
         // The event executor keeps accepting work until finish() so the final SHUTDOWN status and ShutdownEvent reach
         // listeners in order on the event thread. Queued Gateway events are still dropped by the shutdownRequested
         // check in enqueueEvent.
-        return rest.shutdown(shutdownTimeout);
+        return ownsRest ? rest.shutdown(shutdownTimeout) : CompletableFuture.completedFuture(null);
     }
 
     /**

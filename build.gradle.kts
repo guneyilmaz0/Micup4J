@@ -103,3 +103,28 @@ tasks.register("verifyNoKotlinInMain") {
     }
 }
 tasks.named("check") { dependsOn(tasks.named("verifyNoKotlinInMain")) }
+
+// Repeatable local load harness against an in-process mock Micup instance; see docs/PERFORMANCE.md.
+val load = sourceSets.create("load") {
+    java.srcDir("src/load/java")
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+configurations[load.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+dependencies { "loadImplementation"("com.squareup.okhttp3:mockwebserver:4.12.0") }
+tasks.register<JavaExec>("loadTest") {
+    group = "verification"
+    description = "Runs the load harness; tune with -Pload.events, -Pload.pacedRate, -Pload.guilds, -Pload.requests, -Pload.shards, -Pload.soakSeconds"
+    classpath = load.runtimeClasspath
+    mainClass.set("net.guneyilmaz0.micup4j.load.LoadHarness")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
+    jvmArgs("-Xms512m", "-Xmx512m", "-XX:+UseG1GC")
+    val output = layout.buildDirectory.file("reports/load/results.json")
+    outputs.file(output)
+    outputs.upToDateWhen { false }
+    listOf("events", "pacedRate", "guilds", "requests", "shards", "soakSeconds").forEach { key ->
+        providers.gradleProperty("load.$key").orNull?.let { systemProperty("load.$key", it) }
+    }
+    systemProperty("load.output", output.get().asFile.absolutePath)
+}
+tasks.named("check") { dependsOn(tasks.named(load.classesTaskName)) }

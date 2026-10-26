@@ -100,6 +100,31 @@ public final class RestClient implements AutoCloseable {
      * @throws NullPointerException if an argument is {@code null}
      * @throws IllegalArgumentException if {@code capacity} is less than 1
      */
+    /**
+     * Creates a REST client with its own HTTP client, for sharing between several sessions of one bot token through
+     * {@code MicupBuilder.setRestClient} or a shard manager. Sessions that share it share route buckets, learned server
+     * buckets, global pacing and queue capacity. The owner closes it after every session that uses it has stopped.
+     *
+     * @param token    the bot token
+     * @param capacity the maximum number of queued requests across every session
+     * @param config   the REST policy
+     * @return the shared client
+     */
+    public static RestClient shared(String token, int capacity, RestConfig config) {
+        var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).followRedirects(HttpClient.Redirect.NEVER).build();
+        return new RestClient(http, token, capacity, config);
+    }
+
+    /**
+     * Returns whether this client authenticates with {@code candidate}, compared in constant time.
+     *
+     * @param candidate the token to compare
+     * @return {@code true} for the same token
+     */
+    public boolean isForToken(String candidate) {
+        return candidate != null && MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), candidate.getBytes(StandardCharsets.UTF_8));
+    }
+
     public RestClient(HttpClient http, String token, int capacity, RestConfig config) {
         if (capacity < 1) throw new IllegalArgumentException("REST queue capacity must be positive");
         this.http = Objects.requireNonNull(http); this.token = Objects.requireNonNull(token);

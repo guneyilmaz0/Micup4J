@@ -21,6 +21,7 @@ public final class MicupBuilder {
     private final List<EventListener> listeners = new ArrayList<>();
     private List<String> ignoredEvents = List.of();
     private int restCapacity = 1024, eventCapacity = 1024, shardId, shardCount;
+    private RestClient sharedRest;
     private Consumer<Throwable> errorHandler = error -> System.getLogger("Micup4J").log(System.Logger.Level.ERROR, "Micup client failure", error);
 
     private MicupBuilder(String token) {
@@ -104,6 +105,16 @@ public final class MicupBuilder {
     public MicupBuilder setIdle(boolean idle) {
         presence = new net.guneyilmaz0.micup4j.managers.Presence.State(presence.status(), presence.activity(), idle, true, presence.activityConfigured()); return this;
     }
+    /**
+     * Shares a REST client with other sessions of the same bot token, so their requests use one rate-limit scheduler.
+     * The session never drains or closes a shared client: its owner does, after every session using it has stopped. The
+     * builder's queue capacity and {@link RestConfig} do not apply to a shared client.
+     *
+     * @param client a client from {@link RestClient#shared(String, int, RestConfig)}, or {@code null} for a private one
+     * @return this builder
+     */
+    public MicupBuilder setRestClient(RestClient client) { sharedRest = client; return this; }
+
     public MicupBuilder setCachePolicy(CachePolicy policy) {
         cachePolicy = Objects.requireNonNull(policy); return this;
     }
@@ -111,6 +122,8 @@ public final class MicupBuilder {
     public Micup build() {
         if (cachePolicy.maxGuilds() > 0 && ignoredEvents.stream().anyMatch(EntityCache::isEntityEvent))
             throw new IllegalStateException("Entity cache requires its Gateway update events; disable the cache to ignore them");
-        return new Micup(token, origin, List.copyOf(listeners), ignoredEvents, restCapacity, eventCapacity, shardId, shardCount, errorHandler, restConfig, gatewayConfig, cachePolicy, presence);
+        if (sharedRest != null && (!sharedRest.isForToken(token) || sharedRest.isShutdown()))
+            throw new IllegalStateException("A shared REST client must be open and use the same bot token");
+        return new Micup(token, origin, List.copyOf(listeners), ignoredEvents, restCapacity, eventCapacity, shardId, shardCount, errorHandler, restConfig, gatewayConfig, cachePolicy, presence, sharedRest);
     }
 }
