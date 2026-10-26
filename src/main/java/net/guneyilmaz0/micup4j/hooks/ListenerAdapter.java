@@ -13,6 +13,14 @@ public abstract class ListenerAdapter implements EventListener {
             onSlashCommandInteraction(slash);
         }
         else if (event instanceof InteractionCreateEvent interaction) onInteractionCreate(interaction);
+        else if (event instanceof net.guneyilmaz0.micup4j.events.guild.GenericGuildEvent guild) {
+            onGenericGuild(guild);
+            if (guild instanceof net.guneyilmaz0.micup4j.events.guild.GuildReadyEvent ready) onGuildReady(ready);
+            else if (guild instanceof net.guneyilmaz0.micup4j.events.guild.GuildJoinEvent joined) onGuildJoin(joined);
+            else if (guild instanceof net.guneyilmaz0.micup4j.events.guild.GuildAvailableEvent available) onGuildAvailable(available);
+            else if (guild instanceof net.guneyilmaz0.micup4j.events.guild.GuildUnavailableEvent unavailable) onGuildUnavailable(unavailable);
+            else if (guild instanceof net.guneyilmaz0.micup4j.events.guild.GuildLeaveEvent left) onGuildLeave(left);
+        }
         else if (event instanceof StatusChangeEvent status) onStatusChange(status);
         else if (event instanceof ReconnectEvent reconnect) onReconnect(reconnect);
     }
@@ -20,6 +28,13 @@ public abstract class ListenerAdapter implements EventListener {
     public void onReady(net.guneyilmaz0.micup4j.events.session.ReadyEvent event) { onReady((ReadyEvent) event); }
     public void onMessageReceived(net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent event) { onMessageReceived((MessageReceivedEvent) event); }
     public void onSlashCommandInteraction(net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent event) {}
+
+    public void onGenericGuild(net.guneyilmaz0.micup4j.events.guild.GenericGuildEvent event) {}
+    public void onGuildReady(net.guneyilmaz0.micup4j.events.guild.GuildReadyEvent event) {}
+    public void onGuildJoin(net.guneyilmaz0.micup4j.events.guild.GuildJoinEvent event) {}
+    public void onGuildAvailable(net.guneyilmaz0.micup4j.events.guild.GuildAvailableEvent event) {}
+    public void onGuildUnavailable(net.guneyilmaz0.micup4j.events.guild.GuildUnavailableEvent event) {}
+    public void onGuildLeave(net.guneyilmaz0.micup4j.events.guild.GuildLeaveEvent event) {}
 
     public void onGenericEvent(GenericEvent event) {
     }

@@ -12,6 +12,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import net.guneyilmaz0.micup4j.managers.Presence;
 
 /** All protocol mutations run on one scheduler. User callbacks run on a separate bounded queue. */
 public final class GatewayClient implements AutoCloseable {
@@ -23,7 +25,13 @@ public final class GatewayClient implements AutoCloseable {
     private volatile long reconnectCount;
     private final List<String> ignored;
     private final int shardId, shardCount;
-    private final ScheduledExecutorService state = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("micup4j-gateway").factory());
+    private final ScheduledThreadPoolExecutor state = stateExecutor();
+    private static ScheduledThreadPoolExecutor stateExecutor() {
+        var executor = new ScheduledThreadPoolExecutor(1, Thread.ofPlatform().daemon().name("micup4j-gateway").factory());
+        executor.setRemoveOnCancelPolicy(true);
+        executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        return executor;
+    }
     private volatile WebSocket socket;
     private volatile CompletableFuture<WebSocket> connection;
     private CompletableFuture<Void> sends = CompletableFuture.completedFuture(null);
@@ -35,6 +43,11 @@ public final class GatewayClient implements AutoCloseable {
     private volatile boolean closed;
     private volatile long ping = -1;
     private long heartbeatSent;
+    private final AtomicBoolean presenceSignalQueued = new AtomicBoolean();
+    private ScheduledFuture<?> presenceTask;
+    private boolean authenticated, presenceInFlight;
+    private long nextPresenceAt;
+    private Presence.State lastPresence;
 
     public GatewayClient(Micup client, HttpClient http, URI endpoint, String token, List<String> ignored, int shardId, int shardCount, GatewayConfig config) {
         RestClient.requireEndpoint(endpoint, true);
@@ -46,6 +59,32 @@ public final class GatewayClient implements AutoCloseable {
         this.ignored = List.copyOf(ignored);
         this.shardId = shardId;
         this.shardCount = shardCount;
+    }
+
+    public void updatePresence() {
+        if (closed || !presenceSignalQueued.compareAndSet(false, true)) return;
+        execute(() -> { presenceSignalQueued.set(false); flushPresence(); });
+    }
+
+    private void flushPresence() {
+        if (closed || !authenticated || socket == null || presenceInFlight || presenceTask != null) return;
+        Presence.State desired = client.getPresence().snapshot();
+        if (!desired.configured() || desired.equals(lastPresence)) return;
+        long delay = Math.max(0, nextPresenceAt - System.nanoTime());
+        if (delay > 0) {
+            presenceTask = state.schedule(() -> { presenceTask = null; flushPresence(); }, delay, TimeUnit.NANOSECONDS);
+            return;
+        }
+        long id = generation, epoch = sessionEpoch;
+        presenceInFlight = true;
+        lastPresence = desired;
+        nextPresenceAt = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(4100);
+        send(3, desired.toJson());
+        sends.whenComplete((ignored, failure) -> execute(() -> {
+            if (id != generation || epoch != sessionEpoch) return;
+            presenceInFlight = false;
+            if (failure == null) flushPresence();
+        }));
     }
 
     public void start() {
@@ -71,6 +110,9 @@ public final class GatewayClient implements AutoCloseable {
     private void connect() {
         if (closed) return;
         reconnect = null;
+        authenticated = false; presenceInFlight = false; lastPresence = null;
+        nextPresenceAt = System.nanoTime();
+        if (presenceTask != null) { presenceTask.cancel(false); presenceTask = null; }
         long id = ++generation;
         client.updateStatus(Micup.Status.CONNECTING);
         URI url = URI.create(endpoint + "?v=1&encoding=json");
@@ -156,6 +198,8 @@ public final class GatewayClient implements AutoCloseable {
     private void identify() {
         var data = Json.object().put("token", token);
         data.set("properties", Json.object().put("os", System.getProperty("os.name")).put("browser", "Micup4J").put("device", "Micup4J"));
+        var initialPresence = client.getPresence().snapshot();
+        if (initialPresence.configured()) data.set("presence", initialPresence.toJson());
         if (!ignored.isEmpty()) data.set("ignored_events", Json.MAPPER.valueToTree(ignored));
         if (shardCount > 0) data.set("shard", Json.MAPPER.valueToTree(new int[]{shardId, shardCount}));
         send(2, data);
@@ -176,7 +220,9 @@ public final class GatewayClient implements AutoCloseable {
         if (type.equals("READY") || type.equals("RESUMED")) {
             attempts = 0;
             if (watchdog != null) watchdog.cancel(false);
+            authenticated = true;
             client.updateStatus(Micup.Status.CONNECTED);
+            flushPresence();
         }
         if (!type.equals("RESUMED") && seq <= highestSeen) return;
         highestSeen = Math.max(highestSeen, seq);
@@ -192,6 +238,8 @@ public final class GatewayClient implements AutoCloseable {
     }
 
     private void resetSession() {
+        authenticated = false; presenceInFlight = false; lastPresence = null;
+        if (presenceTask != null) { presenceTask.cancel(false); presenceTask = null; }
         sessionId = null;
         sequence = 0;
         highestSeen = 0;
@@ -238,6 +286,8 @@ public final class GatewayClient implements AutoCloseable {
     private void retry(ReconnectEvent.Reason reason, int closeCode) {
         if (closed || reconnect != null) return;
         generation++;
+        authenticated = false; presenceInFlight = false;
+        if (presenceTask != null) { presenceTask.cancel(false); presenceTask = null; }
         if (heartbeat != null) heartbeat.cancel(false);
         if (watchdog != null) watchdog.cancel(false);
         if (socket != null) { socket.abort(); socket = null; }

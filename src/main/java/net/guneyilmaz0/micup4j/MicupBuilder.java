@@ -13,6 +13,7 @@ import java.util.function.Consumer;
 /** JDA-style builder for a single Micup Gateway session. */
 public final class MicupBuilder {
     private final String token;
+    private net.guneyilmaz0.micup4j.managers.Presence.State presence = net.guneyilmaz0.micup4j.managers.Presence.State.defaults();
     private CachePolicy cachePolicy = CachePolicy.defaults();
     private RestConfig restConfig = RestConfig.defaults();
     private GatewayConfig gatewayConfig = GatewayConfig.defaults();
@@ -94,6 +95,15 @@ public final class MicupBuilder {
         gatewayConfig = Objects.requireNonNull(config); return this;
     }
 
+    public MicupBuilder setStatus(OnlineStatus status) {
+        presence = new net.guneyilmaz0.micup4j.managers.Presence.State(status, presence.activity(), presence.idle(), true, presence.activityConfigured()); return this;
+    }
+    public MicupBuilder setActivity(net.guneyilmaz0.micup4j.entities.Activity activity) {
+        presence = new net.guneyilmaz0.micup4j.managers.Presence.State(presence.status(), activity, presence.idle(), true, true); return this;
+    }
+    public MicupBuilder setIdle(boolean idle) {
+        presence = new net.guneyilmaz0.micup4j.managers.Presence.State(presence.status(), presence.activity(), idle, true, presence.activityConfigured()); return this;
+    }
     public MicupBuilder setCachePolicy(CachePolicy policy) {
         cachePolicy = Objects.requireNonNull(policy); return this;
     }
@@ -101,6 +111,6 @@ public final class MicupBuilder {
     public Micup build() {
         if (cachePolicy.maxGuilds() > 0 && ignoredEvents.stream().anyMatch(EntityCache::isEntityEvent))
             throw new IllegalStateException("Entity cache requires its Gateway update events; disable the cache to ignore them");
-        return new Micup(token, origin, List.copyOf(listeners), ignoredEvents, restCapacity, eventCapacity, shardId, shardCount, errorHandler, restConfig, gatewayConfig, cachePolicy);
+        return new Micup(token, origin, List.copyOf(listeners), ignoredEvents, restCapacity, eventCapacity, shardId, shardCount, errorHandler, restConfig, gatewayConfig, cachePolicy, presence);
     }
 }

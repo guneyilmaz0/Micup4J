@@ -3,6 +3,8 @@ package net.guneyilmaz0.micup4j.examples;
 import net.guneyilmaz0.micup4j.EmbedBuilder;
 import net.guneyilmaz0.micup4j.Micup;
 import net.guneyilmaz0.micup4j.MicupBuilder;
+import net.guneyilmaz0.micup4j.OnlineStatus;
+import net.guneyilmaz0.micup4j.entities.Activity;
 import net.guneyilmaz0.micup4j.entities.channel.ChannelType;
 import net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent;
 import net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent;
@@ -16,6 +18,8 @@ import net.guneyilmaz0.micup4j.interactions.commands.build.Commands;
 public final class JdaStyleBot extends ListenerAdapter {
     public static void main(String[] args) throws InterruptedException {
         Micup client = MicupBuilder.createDefault(System.getenv("MICUP_TOKEN"))
+                .setStatus(OnlineStatus.ONLINE)
+                .setActivity(Activity.customStatus("Ready for commands"))
                 .addEventListeners(new JdaStyleBot())
                 .build().awaitReady();
         Runtime.getRuntime().addShutdownHook(new Thread(client::shutdown));

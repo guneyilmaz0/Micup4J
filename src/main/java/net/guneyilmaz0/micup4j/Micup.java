@@ -24,6 +24,8 @@ public final class Micup implements AutoCloseable {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).followRedirects(HttpClient.Redirect.NEVER).build();
     private final RestClient rest;
     private final EntityCache entityCache;
+    private final GuildLifecycle guildLifecycle = new GuildLifecycle();
+    private final net.guneyilmaz0.micup4j.managers.Presence presence;
     private final CopyOnWriteArrayList<EventListener> listeners;
     private final ThreadPoolExecutor events;
     private final Consumer<Throwable> errorHandler;
@@ -42,9 +44,10 @@ public final class Micup implements AutoCloseable {
     private volatile boolean closed;
     private final CompletableFuture<HttpResponse<String>> discovery;
 
-    Micup(String token, URI origin, List<EventListener> listeners, List<String> ignored, int restCapacity, int eventCapacity, int shardId, int shardCount, Consumer<Throwable> handler, RestConfig restConfig, GatewayConfig gatewayConfig, CachePolicy cachePolicy) {
+    Micup(String token, URI origin, List<EventListener> listeners, List<String> ignored, int restCapacity, int eventCapacity, int shardId, int shardCount, Consumer<Throwable> handler, RestConfig restConfig, GatewayConfig gatewayConfig, CachePolicy cachePolicy, net.guneyilmaz0.micup4j.managers.Presence.State initialPresence) {
         this.listeners = new CopyOnWriteArrayList<>(listeners);
         entityCache = new EntityCache(cachePolicy);
+        presence = new net.guneyilmaz0.micup4j.managers.Presence(this, initialPresence);
         errorHandler = handler;
         this.eventCapacity = eventCapacity;
         events = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(eventCapacity),
@@ -77,6 +80,10 @@ public final class Micup implements AutoCloseable {
             }
         });
     }
+
+    public net.guneyilmaz0.micup4j.managers.Presence getPresence() { return presence; }
+    /** Signals one replaceable desired presence, not an unbounded stream of Gateway commands. */
+    public void presenceChanged() { var connection = gateway; if (connection != null) connection.updatePresence(); }
 
     public Status getStatus() {
         return status;
@@ -379,17 +386,30 @@ public final class Micup implements AutoCloseable {
         try {
             events.execute(() -> {
                 lastEventQueueDelay = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt);
+                GenericEvent delivered = event;
                 try {
                     synchronized (lifecycle) {
                         if (closed) { completion.completeExceptionally(new IllegalStateException("Client closed")); return; }
-                        if (status != Status.FAILED && entityCache.accepts(event.getType())) entityCache.apply(event.getType(), event.getData());
+                        if (status != Status.FAILED) {
+                            boolean guildEvent = GuildLifecycle.accepts(event.getType());
+                            if (guildEvent || entityCache.accepts(event.getType())) {
+                                JsonNode data = event.getData();
+                                String guildId = data.path("guild_id").asText(data.path("id").asText(null));
+                                Guild before = guildEvent && guildId != null ? getGuildById(guildId) : null;
+                                entityCache.apply(event.getType(), data);
+                                if (guildEvent) {
+                                    Guild after = guildId == null ? null : getGuildById(guildId);
+                                    delivered = guildLifecycle.apply(this, event, data, before, after);
+                                }
+                            }
+                        }
                     }
                 } catch (RuntimeException invalid) {
                     completion.completeExceptionally(new IllegalStateException("Invalid entity event: " + event.getType()));
                     return;
                 }
                 for (EventListener listener : listeners) {
-                    try { listener.onEvent(event); }
+                    try { listener.onEvent(delivered); }
                     catch (Throwable error) {
                         listenerFailures.increment();
                         reportFailure(new IllegalStateException("Listener failed for " + event.getType()));
@@ -419,6 +439,7 @@ public final class Micup implements AutoCloseable {
             rest.close();
             events.shutdown();
             entityCache.clear();
+            guildLifecycle.clear();
             http.shutdown();
             terminated.completeExceptionally(error);
         }
@@ -441,6 +462,7 @@ public final class Micup implements AutoCloseable {
             rest.close();
             events.shutdownNow();
             entityCache.clear();
+            guildLifecycle.clear();
             pendingEvents.forEach(event -> event.completeExceptionally(new IllegalStateException("Client closed")));
             http.shutdownNow();
             terminated.complete(null);
