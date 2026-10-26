@@ -5,6 +5,7 @@ import net.guneyilmaz0.micup4j.config.CachePolicy;
 import net.guneyilmaz0.micup4j.entities.*;
 import net.guneyilmaz0.micup4j.internal.*;
 import net.guneyilmaz0.micup4j.permissions.*;
+import net.guneyilmaz0.micup4j.permissions.Permission;
 import org.junit.jupiter.api.Test;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -29,7 +30,7 @@ class EntityCacheTest {
         incremental.apply("GUILD_MEMBER_ADD", json("{\"guild_id\":\"1\",\"user\":{\"id\":\"4\",\"username\":\"User\"},\"roles\":[\"2\"]}"));
         assertEquals(fromSnapshot.getGuild("1"), incremental.getGuild("1"));
         Guild g = incremental.getGuild("1").orElseThrow();
-        assertTrue(PermissionResolver.channelPermissions(g, g.getMemberById("4").orElseThrow(), g.getChannelById("8").orElseThrow())
+        assertTrue(PermissionResolver.channelPermissions(g, g.findMemberById("4").orElseThrow(), g.findChannelById("8").orElseThrow())
                 .contains(Permission.SEND_MESSAGES));
     }
     @Test void syncReplacesRolesAndChannelsButMergesPartialMembers() {

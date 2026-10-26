@@ -7,11 +7,13 @@ import net.guneyilmaz0.micup4j.requests.RestAction;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class InteractionCreateEvent extends GenericEvent {
+public class InteractionCreateEvent extends GenericEvent implements net.guneyilmaz0.micup4j.entities.ISnowflake {
     private final String id, applicationId, token;
     private final int interactionType;
     private final long responseDeadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(2500);
     private final AtomicBoolean acknowledged = new AtomicBoolean();
+    private final CompletableFuture<Void> acknowledgedResponse = new CompletableFuture<>();
+    private final net.guneyilmaz0.micup4j.interactions.InteractionHook hook = new net.guneyilmaz0.micup4j.interactions.InteractionHook(this);
 
     public InteractionCreateEvent(Micup client, long sequence, JsonNode data) {
         super(client, "INTERACTION_CREATE", sequence, data);
@@ -33,17 +35,57 @@ public final class InteractionCreateEvent extends GenericEvent {
         return getData().path("data").path("custom_id").asText("");
     }
 
-    public RestAction<Void> reply(String content) {
-        return reply(content, false);
+    @Override public String getId() { return id; }
+    public boolean isAcknowledged() { return acknowledged.get(); }
+    public net.guneyilmaz0.micup4j.interactions.InteractionHook getHook() { return hook; }
+    /** Independent view: cancelling a hook action cannot cancel the initial acknowledgement. */
+    public CompletableFuture<Void> acknowledgement() {
+        return acknowledged.get() ? acknowledgedResponse.copy() : CompletableFuture.failedFuture(new IllegalStateException("Interaction has not been acknowledged"));
     }
-
-    public RestAction<Void> reply(String content, boolean ephemeral) {
-        return respond(4, Json.object().put("content", content).put("flags", ephemeral ? 64 : 0));
+    public String getGuildId() { return getData().path("guild_id").asText(null); }
+    public boolean isFromGuild() { return getGuildId() != null; }
+    public net.guneyilmaz0.micup4j.entities.Guild getGuild() {
+        return isFromGuild() ? getMicup().getGuildReferenceById(getGuildId()) : null;
     }
-
-    public RestAction<Void> replyEmbeds(boolean ephemeral, net.guneyilmaz0.micup4j.entities.MessageEmbed... embeds) {
+    public net.guneyilmaz0.micup4j.entities.User getUser() {
+        var data = getData(); var user = data.path("member").path("user");
+        if (!user.isObject()) user = data.path("user");
+        return net.guneyilmaz0.micup4j.entities.User.fromJson(user).withClient(getMicup());
+    }
+    public net.guneyilmaz0.micup4j.entities.Member getMember() {
+        var member = getData().path("member");
+        return isFromGuild() && member.isObject() ? net.guneyilmaz0.micup4j.entities.Member.fromJson(getGuildId(), member).withClient(getMicup()) : null;
+    }
+    public net.guneyilmaz0.micup4j.entities.MessageChannel getChannel() {
+        return new net.guneyilmaz0.micup4j.entities.MessageChannel(getMicup(), getData().path("channel_id").asText(), getGuildId());
+    }
+    public java.util.List<net.guneyilmaz0.micup4j.interactions.commands.OptionMapping> getOptions() {
+        var data = getData().path("data");
+        var result = new java.util.ArrayList<net.guneyilmaz0.micup4j.interactions.commands.OptionMapping>();
+        for (var option : data.path("options"))
+            result.add(new net.guneyilmaz0.micup4j.interactions.commands.OptionMapping(getMicup(), getGuildId(), option, data.path("resolved")));
+        return java.util.List.copyOf(result);
+    }
+    public net.guneyilmaz0.micup4j.interactions.commands.OptionMapping getOption(String name) {
+        java.util.Objects.requireNonNull(name);
+        return getOptions().stream().filter(option -> option.getName().equals(name)).findFirst().orElse(null);
+    }
+    public <T> T getOption(String name, T fallback,
+                          java.util.function.Function<net.guneyilmaz0.micup4j.interactions.commands.OptionMapping, T> resolver) {
+        var option = getOption(name); return option == null ? fallback : resolver.apply(option);
+    }
+    public net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction reply(String content) { return reply(content, false); }
+    public net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction reply(String content, boolean ephemeral) {
+        if (content == null || content.isBlank()) throw new IllegalArgumentException("Reply content is required");
+        return new net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction(this, 4,
+                Json.object().put("content", content).put("flags", ephemeral ? 64 : 0));
+    }
+    public net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction replyEmbeds(net.guneyilmaz0.micup4j.entities.MessageEmbed... embeds) {
+        return replyEmbeds(false, embeds);
+    }
+    public net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction replyEmbeds(boolean ephemeral, net.guneyilmaz0.micup4j.entities.MessageEmbed... embeds) {
         var body = net.guneyilmaz0.micup4j.internal.MessagePayload.embeds(embeds).put("flags", ephemeral ? 64 : 0);
-        return respond(4, body);
+        return new net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction(this, 4, body);
     }
 
     /** Returns a copied raw option value; absent options are represented by an empty Optional. */
@@ -54,8 +96,9 @@ public final class InteractionCreateEvent extends GenericEvent {
         return java.util.Optional.empty();
     }
 
-    public RestAction<Void> deferReply(boolean ephemeral) {
-        return respond(5, Json.object().put("flags", ephemeral ? 64 : 0));
+    public net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction deferReply() { return deferReply(false); }
+    public net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction deferReply(boolean ephemeral) {
+        return new net.guneyilmaz0.micup4j.requests.restaction.interactions.ReplyCallbackAction(this, 5, Json.object().put("flags", ephemeral ? 64 : 0));
     }
 
     /**
@@ -77,7 +120,24 @@ public final class InteractionCreateEvent extends GenericEvent {
             if (!acknowledged.compareAndSet(false, true))
                 return CompletableFuture.failedFuture(new IllegalStateException("Interaction response already submitted"));
             // Keep the guard on transport failure: the server may already have consumed the token.
-            return getMicup().getRestClient().requestCallback("/interactions/" + id + "/" + Json.segment(token) + "/callback", body, responseDeadline).submit();
+            hook.markCallback(callbackType, (body.path("data").path("flags").asInt() & 64) != 0);
+            var response = getMicup().getRestClient().requestCallback("/interactions/" + id + "/" + Json.segment(token) + "/callback", body, responseDeadline).submit();
+            var result = new CompletableFuture<JsonNode>();
+            result.whenComplete((value, error) -> {
+                if (result.isCancelled()) {
+                    acknowledgedResponse.completeExceptionally(new IllegalStateException("Interaction acknowledgement cancelled"));
+                    response.cancel(true);
+                }
+            });
+            response.whenComplete((value, error) -> {
+                // Settle the shared barrier before exposing the hook to callback consumers.
+                if (error == null) acknowledgedResponse.complete(null);
+                else acknowledgedResponse.completeExceptionally(new IllegalStateException("Interaction acknowledgement failed"));
+                if (response.isCancelled()) result.cancel(false);
+                else if (error != null) result.completeExceptionally(error);
+                else result.complete(value);
+            });
+            return result;
         }).map(value -> null);
     }
 

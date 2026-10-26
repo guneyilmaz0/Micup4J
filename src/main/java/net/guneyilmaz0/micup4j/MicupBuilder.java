@@ -55,6 +55,10 @@ public final class MicupBuilder {
         return this;
     }
 
+    public MicupBuilder removeEventListeners(EventListener... values) {
+        for (var listener : values) listeners.remove(listener); return this;
+    }
+
     public MicupBuilder setIgnoredEvents(String... names) {
         ignoredEvents = Arrays.stream(names).map(name -> Objects.requireNonNull(name).toUpperCase(Locale.ROOT)).distinct().toList();
         if (ignoredEvents.size() > 256 || ignoredEvents.stream().anyMatch(name -> !name.matches("[A-Z_]{1,100}") || Set.of("READY", "RESUMED", "INTERACTION_CREATE").contains(name)))

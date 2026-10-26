@@ -20,6 +20,10 @@ public class GenericEvent {
         return client;
     }
 
+    /** Source migration alias; this is a Micup session, never a Discord JDA instance. */
+    public Micup getJDA() { return client; }
+    public long getResponseNumber() { return sequence; }
+
     public String getType() {
         return type;
     }

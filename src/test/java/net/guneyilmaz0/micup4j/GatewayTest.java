@@ -32,7 +32,7 @@ class GatewayTest {
             @Override public MockResponse dispatch(RecordedRequest request) {
                 if (request.getPath().equals("/.well-known/fluxer")) {
                     assertNull(request.getHeader("Authorization"));
-                    return json("{\"endpoints\":{\"api_public\":\"" + server.url("/public") + "\",\"api_client\":\"https://wrong.invalid\",\"gateway\":\"" + server.url("/gateway").toString().replace("http:", "ws:") + "\"}}");
+                    return json("{\"endpoints\":{\"api_public\":\"" + server.url("/public") + "\",\"api_client\":\"https://wrong.invalid\",\"media\":\"" + server.url("/proxy") + "\",\"gateway\":\"" + server.url("/gateway").toString().replace("http:", "ws:") + "\"}}");
                 }
                 if (request.getPath().startsWith("/gateway?")) return new MockResponse().withWebSocketUpgrade(new WebSocketListener() {
                     @Override public void onOpen(WebSocket ws, Response response) {
@@ -370,14 +370,14 @@ class GatewayTest {
         var observed = new CompletableFuture<net.guneyilmaz0.micup4j.entities.Guild>();
         start(new ListenerAdapter() {
             @Override public void onGenericEvent(GenericEvent event) {
-                if (event.getType().equals("GUILD_CREATE")) observed.complete(event.getMicup().getGuildById("1").orElseThrow());
+                if (event.getType().equals("GUILD_CREATE")) observed.complete(event.getMicup().findGuildById("1").orElseThrow());
             }
         });
         var envelope = Json.object().put("op", 0).put("t", "GUILD_CREATE").put("s", 2);
         envelope.set("d", EntityCacheTest.snapshot());
         sockets.poll(2, TimeUnit.SECONDS).send(envelope.toString());
         assertEquals("Guild", observed.get(3, TimeUnit.SECONDS).name());
-        assertEquals(2, client.getGuildById("1").orElseThrow().roles().size());
+        assertEquals(2, client.findGuildById("1").orElseThrow().roles().size());
         client.close(); assertTrue(client.getGuilds().isEmpty());
     }
 
@@ -478,6 +478,186 @@ class GatewayTest {
         var error = assertThrows(ExecutionException.class, () -> client.termination().get(3, TimeUnit.SECONDS));
         assertFalse(error.toString().contains("private-payload-value"));
         assertEquals(Micup.Status.FAILED, client.getStatus()); assertTrue(client.getGuilds().isEmpty());
+    }
+
+    @Test void jdaStyleReadyAndMessageCallbacksBridgeLegacyListenersOnce() throws Exception {
+        var legacyReady = new CountDownLatch(1); var modernReady = new CountDownLatch(1);
+        var modernMessage = new CompletableFuture<net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent>();
+        client = MicupBuilder.createDefault("test-token").setInstanceOrigin(server.url("/").uri()).setErrorHandler(errors::add)
+                .addEventListeners(new ListenerAdapter() {
+                    @Override public void onReady(ReadyEvent event) { legacyReady.countDown(); }
+                }, new ListenerAdapter() {
+                    @Override public void onReady(net.guneyilmaz0.micup4j.events.session.ReadyEvent event) { modernReady.countDown(); }
+                    @Override public void onMessageReceived(net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent event) { modernMessage.complete(event); }
+                }).build().awaitReady();
+        assertTrue(legacyReady.await(2, TimeUnit.SECONDS)); assertTrue(modernReady.await(2, TimeUnit.SECONDS));
+        sockets.poll(2, TimeUnit.SECONDS).send("{\"op\":0,\"s\":2,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"3\",\"channel_id\":\"2\",\"author\":{\"id\":\"4\",\"username\":\"Human\"},\"content\":\"ping\"}}");
+        var event = modernMessage.get(3, TimeUnit.SECONDS);
+        assertSame(client, event.getJDA()); assertEquals(3, event.getMessage().getIdLong());
+        assertFalse(event.isFromGuild()); assertNull(event.getMember());
+        assertEquals(net.guneyilmaz0.micup4j.entities.channel.ChannelType.PRIVATE, event.getChannelType());
+        assertEquals(event.getChannelType(), event.getChannel().getType());
+        assertEquals(2, event.getResponseNumber());
+    }
+
+    net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent slashFixture() {
+        return new net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent(client, 2, Json.parse("""
+                {"id":"123","application_id":"42","token":"interaction-secret","type":2,"guild_id":"1","channel_id":"8",
+                 "member":{"user":{"id":"4","username":"Caller"},"roles":["2"]},
+                 "data":{"name":"hello","options":[{"name":"name","type":3,"value":"World"},
+                    {"name":"user","type":6,"value":"5"},{"name":"count","type":4,"value":7},{"name":"enabled","type":5,"value":true}],
+                  "resolved":{"users":{"5":{"id":"5","username":"Target"}},"members":{"5":{"roles":["2"]}}}}}
+                """));
+    }
+
+    @Test void typedSlashRepliesExposeHookAndSerializeFluentEphemeralPayload() throws Exception {
+        var received = new CompletableFuture<net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent>();
+        var legacy = new AtomicInteger();
+        start(new ListenerAdapter() {
+            @Override public void onInteractionCreate(InteractionCreateEvent event) { legacy.incrementAndGet(); }
+            @Override public void onSlashCommandInteraction(net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent event) { received.complete(event); }
+        });
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot()).get(3, TimeUnit.SECONDS);
+        var payload = slashFixture().getData();
+        client.dispatch("INTERACTION_CREATE", 3, payload).get(3, TimeUnit.SECONDS);
+        var event = received.get(3, TimeUnit.SECONDS); assertEquals(1, legacy.get());
+        assertSame(client, event.getJDA()); assertEquals("Caller", event.getUser().getName());
+        assertEquals("Guild", event.getGuild().getName()); assertEquals("4", event.getMember().getUser().getId());
+        assertTrue(event.getMember().hasPermission(Permission.MESSAGE_SEND));
+        assertNull(client.getGuildById("999")); assertTrue(client.findGuildById("999").isEmpty());
+        assertNull(event.getOption("missing")); assertEquals("fallback", event.getOption("missing", "fallback", option -> option.getAsString()));
+        assertEquals("Target", event.getOption("user").getAsUser().getName());
+        assertEquals("5", event.getOption("user").getAsMember().getId());
+        assertEquals(7, event.getOption("count").getAsInt()); assertTrue(event.getOption("enabled").getAsBoolean());
+        assertThrows(IllegalStateException.class, () -> event.getOption("count").getAsBoolean());
+        var action = event.reply("Hello").setEphemeral(true).addEmbeds(new EmbedBuilder().setTitle("Welcome").build());
+        var hook = action.submit().get(3, TimeUnit.SECONDS);
+        assertSame(event.getHook(), hook); assertTrue(event.isAcknowledged()); assertTrue(hook.isEphemeral());
+        var callback = Json.parse(route("/callback").getBody().readUtf8());
+        assertEquals(64, callback.path("data").path("flags").asInt());
+        assertEquals("Welcome", callback.path("data").path("embeds").get(0).path("title").asText());
+        assertThrows(IllegalStateException.class, () -> action.setEphemeral(false));
+        assertThrows(ExecutionException.class, () -> event.reply("Again").submit().get(3, TimeUnit.SECONDS));
+        assertFalse(hook.toString().contains("interaction-secret"));
+    }
+
+    @Test void deferredHookCreatesOriginalWithoutAPlaceholderThenSendsFollowups() throws Exception {
+        start(new ListenerAdapter() {});
+        var event = slashFixture();
+        assertThrows(ExecutionException.class, () -> event.getHook().editOriginal("Too early").submit().get(2, TimeUnit.SECONDS));
+        var hook = event.deferReply().setEphemeral(false).submit().get(3, TimeUnit.SECONDS);
+        var callback = Json.parse(route("/callback").getBody().readUtf8());
+        assertEquals(5, callback.path("type").asInt()); assertEquals(0, callback.path("data").path("flags").asInt());
+        assertThrows(ExecutionException.class, () -> hook.retrieveOriginal().submit().get(2, TimeUnit.SECONDS));
+        var original = hook.sendMessage("Original").submit().get(3, TimeUnit.SECONDS);
+        var request = route("/messages/@original"); assertEquals("PATCH", request.getMethod()); assertNull(request.getHeader("Authorization"));
+        assertEquals("Original", Json.parse(request.getBody().readUtf8()).path("content").asText());
+        assertEquals("1", original.getGuild().getId());
+        hook.sendMessage("Followup").submit().get(3, TimeUnit.SECONDS);
+        request = route("/webhooks/42/interaction-secret"); assertEquals("POST", request.getMethod());
+        hook.retrieveOriginal().submit().get(3, TimeUnit.SECONDS); assertEquals("GET", route("/messages/@original").getMethod());
+        hook.deleteOriginal().submit().get(3, TimeUnit.SECONDS); assertEquals("DELETE", route("/messages/@original").getMethod());
+    }
+
+    @Test void cancellingHookWhileAwaitingAcknowledgementDoesNotCancelCallback() throws Exception {
+        start(new ListenerAdapter() {});
+        server.setDispatcher(new okhttp3.mockwebserver.Dispatcher() {
+            @Override public MockResponse dispatch(RecordedRequest request) {
+                if (request.getPath().endsWith("/callback")) return new MockResponse().setResponseCode(204).setHeadersDelay(200, TimeUnit.MILLISECONDS);
+                return json("{\"id\":\"99\",\"channel_id\":\"8\",\"author\":{\"id\":\"1\"},\"content\":\"Done\"}");
+            }
+        });
+        var event = slashFixture();
+        var callback = event.deferReply().submit();
+        var abandoned = event.getHook().editOriginal("Cancelled").submit();
+        assertTrue(abandoned.cancel(true));
+        var hook = callback.get(3, TimeUnit.SECONDS); route("/callback");
+        hook.editOriginal("Done").submit().get(3, TimeUnit.SECONDS);
+        var request = route("/messages/@original");
+        assertEquals("Done", Json.parse(request.getBody().readUtf8()).path("content").asText());
+        assertEquals(4, server.getRequestCount()); // Discovery, WS, callback and one original edit.
+    }
+
+    @Test void failedAcknowledgementPreventsHookHttpRequests() throws Exception {
+        start(new ListenerAdapter() {});
+        server.setDispatcher(new okhttp3.mockwebserver.Dispatcher() {
+            @Override public MockResponse dispatch(RecordedRequest request) { return new MockResponse().setResponseCode(403).setBody("{}"); }
+        });
+        var event = slashFixture();
+        assertThrows(ExecutionException.class, () -> event.reply("Hello").submit().get(3, TimeUnit.SECONDS));
+        assertThrows(ExecutionException.class, () -> event.getHook().editOriginal("Never sent").submit().get(3, TimeUnit.SECONDS));
+        assertEquals(3, server.getRequestCount());
+    }
+
+    @Test void jdaStyleCommandBuildersSupportGlobalAndGuildRegistration() throws Exception {
+        start(new ListenerAdapter() {});
+        entityResponses(request -> request.getMethod().equals("DELETE") ? null : request.getMethod().equals("POST")
+                ? "{\"id\":\"111\",\"name\":\"hello\",\"description\":\"Say hello\",\"type\":1}"
+                : "[{\"id\":\"111\",\"name\":\"hello\",\"description\":\"Say hello\",\"type\":1}]");
+        var command = net.guneyilmaz0.micup4j.interactions.commands.build.Commands.slash("hello", "Say hello");
+        command.addOption(net.guneyilmaz0.micup4j.interactions.commands.OptionType.STRING, "name", "Your name", false);
+        var update = client.updateCommands().addCommands(command);
+        var result = update.submit().get(3, TimeUnit.SECONDS); assertEquals("hello", result.getFirst().getName());
+        var request = route("/commands"); assertEquals("/public/v1/applications/42/commands", request.getPath());
+        assertEquals(3, Json.parse(request.getBody().readUtf8()).get(0).path("options").get(0).path("type").asInt());
+        assertThrows(IllegalStateException.class, () -> update.addCommands(command));
+        assertThrows(IllegalArgumentException.class, () -> client.updateCommands().addCommands(command, command));
+        var guild = client.getGuildReferenceById("1");
+        guild.updateCommands().addCommands(command).submit().get(3, TimeUnit.SECONDS);
+        assertEquals("/public/v1/applications/42/guilds/1/commands", route("/commands").getPath());
+        assertEquals(111L, guild.upsertCommand(command).submit().get(3, TimeUnit.SECONDS).getIdLong());
+        assertEquals("POST", route("/commands").getMethod());
+        assertEquals(1, guild.retrieveCommands().submit().get(3, TimeUnit.SECONDS).size()); assertEquals("GET", route("/commands").getMethod());
+        guild.deleteCommandById(111L).submit().get(3, TimeUnit.SECONDS); assertEquals("DELETE", route("/commands/111").getMethod());
+    }
+
+    @Test void callbackConsumersObserveAnAlreadySettledAcknowledgementBarrier() throws Exception {
+        start(new ListenerAdapter() {});
+        var event = slashFixture();
+        var delivered = new CompletableFuture<net.guneyilmaz0.micup4j.entities.Message>();
+        event.deferReply().queue(hook -> {
+            assertTrue(event.acknowledgement().isDone());
+            try { delivered.complete(hook.editOriginal("Ready").complete(Duration.ofSeconds(2))); }
+            catch (Throwable error) { delivered.completeExceptionally(error); }
+        }, delivered::completeExceptionally);
+        assertEquals("99", delivered.get(3, TimeUnit.SECONDS).getId());
+        assertEquals("PATCH", route("/messages/@original").getMethod());
+    }
+
+    @Test void cachedTextChannelAliasesPreserveJdaStyleLookupAndMessageContext() throws Exception {
+        start(new ListenerAdapter() {});
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot()).get(3, TimeUnit.SECONDS);
+        net.guneyilmaz0.micup4j.entities.channel.middleman.MessageChannel channel = client.getTextChannelById(8L);
+        assertNotNull(channel); assertEquals("<#8>", channel.getAsMention());
+        assertEquals("chat", client.getGuildById(1L).getTextChannelById("8").getName());
+        assertNull(client.getTextChannelById("999"));
+        var sent = channel.sendMessage("Hello").submit().get(3, TimeUnit.SECONDS);
+        assertEquals("1", sent.getGuild().getId()); assertTrue(sent.isFromGuild());
+        assertEquals("Guild", client.getGuildById(1L).getName());
+        assertNotNull(client.getGuildById(1L).getMemberById(4L));
+        assertNull(client.getGuildById(1L).getMemberById("999"));
+    }
+
+    @Test void avatarGetterUsesDiscoveredMediaPrefixAndPreservesNullAvatars() throws Exception {
+        start(new ListenerAdapter() {});
+        var user = net.guneyilmaz0.micup4j.entities.User.fromJson(Json.parse(
+                "{\"id\":\"4\",\"username\":\"Account\",\"global_name\":\"Display\",\"avatar\":\"a_hash\"}")).withClient(client);
+        assertEquals(server.url("/proxy/avatars/4/a_hash.gif").toString(), user.getAvatarUrl());
+        assertEquals("Display", user.getEffectiveName());
+        var member = new net.guneyilmaz0.micup4j.entities.Member("1", user, null, List.of(), null, null, false, false);
+        assertEquals("Display", member.getEffectiveName());
+        assertNull(new net.guneyilmaz0.micup4j.entities.User("5", "No avatar", false).getAvatarUrl());
+        assertEquals(-1L, new net.guneyilmaz0.micup4j.entities.User("18446744073709551615", "Unsigned", false).getIdLong());
+    }
+
+    @Test void privateDeferredOriginalRetrievalIsDecidedByServer() throws Exception {
+        start(new ListenerAdapter() {});
+        var hook = slashFixture().deferReply(true).submit().get(3, TimeUnit.SECONDS);
+        var callback = Json.parse(route("/callback").getBody().readUtf8());
+        assertEquals(64, callback.path("data").path("flags").asInt());
+        assertTrue(hook.isEphemeral());
+        hook.retrieveOriginal().submit().get(3, TimeUnit.SECONDS);
+        assertEquals("GET", route("/messages/@original").getMethod());
     }
 
 }

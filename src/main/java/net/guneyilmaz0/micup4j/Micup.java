@@ -115,8 +115,9 @@ public final class Micup implements AutoCloseable {
         return terminated.copy();
     }
 
-    public Micup awaitReady() throws InterruptedException, ExecutionException, TimeoutException {
-        return awaitReady(Duration.ofSeconds(60));
+    public Micup awaitReady() throws InterruptedException {
+        try { return ready.get(); }
+        catch (ExecutionException error) { throw new IllegalStateException("Micup failed before Ready", error.getCause()); }
     }
 
     public Micup awaitReady(Duration timeout) throws InterruptedException, ExecutionException, TimeoutException {
@@ -137,18 +138,39 @@ public final class Micup implements AutoCloseable {
         return new MessageChannel(this, id);
     }
 
+    /** Cached text channels only; uncached and non-text channel IDs return null. */
+    public net.guneyilmaz0.micup4j.entities.channel.concrete.TextChannel getTextChannelById(String id) {
+        Json.id(id);
+        for (Guild guild : entityCache.getGuilds()) {
+            GuildChannel channel = guild.getChannelById(id);
+            if (channel != null && channel.rawType() == 0)
+                return new net.guneyilmaz0.micup4j.entities.channel.concrete.TextChannel(this, id, guild.id(), channel.name());
+        }
+        return null;
+    }
+    public net.guneyilmaz0.micup4j.entities.channel.concrete.TextChannel getTextChannelById(long id) {
+        return getTextChannelById(Long.toUnsignedString(id));
+    }
+
     public RestAction<User> retrieveUserById(String id) {
-        return rest.request("GET", "/users/" + Json.id(id), null).map(User::fromJson);
+        return rest.request("GET", "/users/" + Json.id(id), null).map(data -> User.fromJson(data).withClient(this));
     }
 
     /** Cached snapshot only; absence means uncached, not necessarily inaccessible or nonexistent. */
-    public Optional<Guild> getGuildById(String id) { return entityCache.getGuild(Json.id(id)); }
+    public Guild getGuildById(String id) { return findGuildById(id).orElse(null); }
+    public Guild getGuildById(long id) { return getGuildById(Long.toUnsignedString(id)); }
+    public Optional<Guild> findGuildById(String id) { return entityCache.getGuild(Json.id(id)).map(guild -> guild.withClient(this)); }
+    /** A lightweight ID reference for REST operations when entity caching is disabled. */
+    public Guild getGuildReferenceById(String id) {
+        Guild guild = getGuildById(id);
+        return guild == null ? new Guild(Json.id(id), "", null, false, List.of(), List.of(), List.of(), false, false).withClient(this) : guild;
+    }
 
-    public List<Guild> getGuilds() { return entityCache.getGuilds(); }
+    public List<Guild> getGuilds() { return entityCache.getGuilds().stream().map(guild -> guild.withClient(this)).toList(); }
 
     /** HTTP reads return detached snapshots and never race Gateway updates into the cache. */
     public RestAction<Guild> retrieveGuildById(String id) {
-        return rest.request("GET", "/guilds/" + Json.id(id), null).map(Guild::fromJson);
+        return rest.request("GET", "/guilds/" + Json.id(id), null).map(data -> Guild.fromJson(data).withClient(this));
     }
 
     public RestAction<List<Role>> retrieveRoles(String guildId) {
@@ -171,12 +193,12 @@ public final class Micup implements AutoCloseable {
     public RestAction<Member> retrieveMemberById(String guildId, String userId) {
         String id = Json.id(guildId);
         return rest.request("GET", "/guilds/" + id + "/members/" + Json.id(userId), null)
-                .map(data -> Member.fromJson(id, data));
+                .map(data -> Member.fromJson(id, data).withClient(this));
     }
 
     public RestAction<Member> retrieveSelfMember(String guildId) {
         String id = Json.id(guildId);
-        return rest.request("GET", "/guilds/" + id + "/members/@me", null).map(data -> Member.fromJson(id, data));
+        return rest.request("GET", "/guilds/" + id + "/members/@me", null).map(data -> Member.fromJson(id, data).withClient(this));
     }
 
     /** One bounded page in ascending user-ID order. Pass the final returned ID as the next exclusive cursor. */
@@ -185,7 +207,7 @@ public final class Micup implements AutoCloseable {
         if (limit < 1 || limit > 1000) throw new IllegalArgumentException("Member page limit must be 1-1000");
         String cursor = after == null ? "" : "&after=" + Json.id(after);
         return rest.request("GET", "/guilds/" + id + "/members?limit=" + limit + cursor, null).map(data -> {
-            List<Member> members = readList(data, limit, value -> Member.fromJson(id, value));
+            List<Member> members = readList(data, limit, value -> Member.fromJson(id, value).withClient(this));
             java.math.BigInteger previous = after == null ? java.math.BigInteger.ZERO : new java.math.BigInteger(after);
             for (Member member : members) {
                 var next = new java.math.BigInteger(member.getId());
@@ -198,7 +220,7 @@ public final class Micup implements AutoCloseable {
 
     public RestAction<Guild> modifyGuildName(String guildId, String name) {
         return rest.request("PATCH", "/guilds/" + Json.id(guildId), Json.object().put("name", boundedName(name, 100)))
-                .map(Guild::fromJson);
+                .map(data -> Guild.fromJson(data).withClient(this));
     }
 
     /** Null clears the nickname. The server enforces hierarchy and permissions. */
@@ -206,7 +228,7 @@ public final class Micup implements AutoCloseable {
         String id = Json.id(guildId);
         if (nickname != null) boundedName(nickname, 32);
         return rest.request("PATCH", "/guilds/" + id + "/members/" + Json.id(userId), Json.object().put("nick", nickname))
-                .map(data -> Member.fromJson(id, data));
+                .map(data -> Member.fromJson(id, data).withClient(this));
     }
 
     public RestAction<Void> addMemberRole(String guildId, String userId, String roleId) {
@@ -269,6 +291,41 @@ public final class Micup implements AutoCloseable {
         return rest.request("PUT", "/applications/" + Json.id(getApplicationId()) + "/commands", body);
     }
 
+    public net.guneyilmaz0.micup4j.requests.restaction.CommandListUpdateAction updateCommands() {
+        return new net.guneyilmaz0.micup4j.requests.restaction.CommandListUpdateAction(this, null);
+    }
+    public net.guneyilmaz0.micup4j.requests.restaction.CommandListUpdateAction updateGuildCommands(String guildId) {
+        return new net.guneyilmaz0.micup4j.requests.restaction.CommandListUpdateAction(this, Json.id(guildId));
+    }
+    public String commandPath(String guildId) {
+        return "/applications/" + Json.id(getApplicationId()) + (guildId == null ? "" : "/guilds/" + Json.id(guildId)) + "/commands";
+    }
+    public RestAction<net.guneyilmaz0.micup4j.interactions.commands.Command> upsertCommand(
+            net.guneyilmaz0.micup4j.interactions.commands.build.CommandData command) { return upsertGuildCommand(null, command); }
+    public RestAction<net.guneyilmaz0.micup4j.interactions.commands.Command> upsertGuildCommand(String guildId,
+            net.guneyilmaz0.micup4j.interactions.commands.build.CommandData command) {
+        return rest.request("POST", commandPath(guildId), Objects.requireNonNull(command).toJson())
+                .map(net.guneyilmaz0.micup4j.interactions.commands.Command::fromJson);
+    }
+    public RestAction<List<net.guneyilmaz0.micup4j.interactions.commands.Command>> retrieveCommands() { return retrieveGuildCommands(null); }
+    public RestAction<List<net.guneyilmaz0.micup4j.interactions.commands.Command>> retrieveGuildCommands(String guildId) {
+        return rest.request("GET", commandPath(guildId), null)
+                .map(data -> readList(data, Integer.MAX_VALUE, net.guneyilmaz0.micup4j.interactions.commands.Command::fromJson));
+    }
+    public RestAction<Void> deleteCommandById(String commandId) { return deleteGuildCommandById(null, commandId); }
+    public RestAction<Void> deleteCommandById(long commandId) { return deleteCommandById(Long.toUnsignedString(commandId)); }
+    public RestAction<Void> deleteGuildCommandById(String guildId, String commandId) {
+        return rest.request("DELETE", commandPath(guildId) + "/" + Json.id(commandId), null).map(ignored -> null);
+    }
+    public Micup addEventListeners(net.guneyilmaz0.micup4j.hooks.EventListener... values) {
+        for (var listener : values) addEventListener(listener); return this;
+    }
+    public Micup removeEventListeners(net.guneyilmaz0.micup4j.hooks.EventListener... values) {
+        for (var listener : values) removeEventListener(listener); return this;
+    }
+    public RestAction<User> retrieveUserById(long id) { return retrieveUserById(Long.toUnsignedString(id)); }
+    public MessageChannel getMessageChannelById(long id) { return getMessageChannelById(Long.toUnsignedString(id)); }
+
     public ClientMetrics getMetrics() {
         return new ClientMetrics(status, rest.getMetrics(), events.getQueue().size(), eventCapacity,
                 deliveredEvents.sum(), listenerFailures.sum(), lastEventQueueDelay, getGatewayPing(),
@@ -287,7 +344,7 @@ public final class Micup implements AutoCloseable {
     public void onReady(JsonNode data) {
         synchronized (lifecycle) {
             if (closed || status == Status.FAILED) return;
-            selfUser = User.fromJson(data.path("user"));
+            selfUser = User.fromJson(data.path("user")).withClient(this);
             applicationId = data.path("application").path("id").asText(selfUser.id());
             updateStatus(Status.CONNECTED);
             ready.complete(this);
@@ -303,9 +360,11 @@ public final class Micup implements AutoCloseable {
     public CompletableFuture<Void> dispatch(String type, long sequence, JsonNode data) {
         try {
             GenericEvent event = switch (type) {
-                case "READY" -> new ReadyEvent(this, sequence, data);
-                case "MESSAGE_CREATE" -> new MessageReceivedEvent(this, sequence, data);
-                case "INTERACTION_CREATE" -> new InteractionCreateEvent(this, sequence, data);
+                case "READY" -> new net.guneyilmaz0.micup4j.events.session.ReadyEvent(this, sequence, data);
+                case "MESSAGE_CREATE" -> new net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent(this, sequence, data);
+                case "INTERACTION_CREATE" -> data.path("type").asInt() == 2
+                        ? new net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent(this, sequence, data)
+                        : new InteractionCreateEvent(this, sequence, data);
                 default -> new GenericEvent(this, type, sequence, data);
             };
             return enqueueEvent(event);
