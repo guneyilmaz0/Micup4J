@@ -49,6 +49,24 @@ public final class GatewayClient implements AutoCloseable {
     private boolean authenticated, presenceInFlight;
     private long nextPresenceAt;
     private Presence.State lastPresence;
+    private final ArrayDeque<MemberRequest> memberQueue = new ArrayDeque<>();
+    private MemberRequest activeMembers;
+    private long memberNonces;
+    /** Queued member requests beyond the running one. */
+    public static final int MEMBER_REQUEST_CAPACITY = 64;
+    /** A running member request fails when no chunk arrives for this long, because Micup silently drops unserviceable requests. */
+    public static final java.time.Duration MEMBER_CHUNK_TIMEOUT = java.time.Duration.ofSeconds(30);
+
+    private static final class MemberRequest {
+        final ObjectNode data;
+        final CompletableFuture<List<JsonNode>> result = new CompletableFuture<>();
+        final List<JsonNode> members = new ArrayList<>();
+        final BitSet chunks = new BitSet();
+        String nonce;
+        int chunkCount = -1;
+        ScheduledFuture<?> timer;
+        MemberRequest(ObjectNode data) { this.data = data; }
+    }
 
     /**
      * Creates a Gateway client; call {@link #start()} to connect.
@@ -125,6 +143,100 @@ public final class GatewayClient implements AutoCloseable {
      */
     public long getPing() {
         return ping;
+    }
+
+    /**
+     * Sends a Request Guild Members command and collects every chunk that answers it. Micup runs one member request per
+     * connection and replaces a pending one, so requests are sent strictly one at a time, in submission order.
+     *
+     * <p>The result fails with a {@link java.util.concurrent.TimeoutException} if no chunk arrives within
+     * {@link #MEMBER_CHUNK_TIMEOUT}, with a {@link net.guneyilmaz0.micup4j.requests.GatewayRateLimitException} when the
+     * server refuses it, and with an {@link IllegalStateException} if the connection is lost while it runs, since chunks are
+     * never replayed. Queued requests survive reconnects. Cancelling the result releases its slot.
+     *
+     * @param data the command payload without a nonce; copied
+     * @return the raw member objects of every chunk, in arrival order
+     */
+    public CompletableFuture<List<JsonNode>> requestMembers(ObjectNode data) {
+        var request = new MemberRequest(data.deepCopy());
+        if (ignored.contains("GUILD_MEMBERS_CHUNK"))
+            return CompletableFuture.failedFuture(new IllegalStateException("GUILD_MEMBERS_CHUNK is ignored by this session"));
+        try {
+            state.execute(() -> {
+                synchronized (this) {
+                    if (closed) { request.result.completeExceptionally(new IllegalStateException("Gateway is closed")); return; }
+                    if (memberQueue.size() >= MEMBER_REQUEST_CAPACITY) {
+                        request.result.completeExceptionally(new RejectedExecutionException("Member request queue is full"));
+                        return;
+                    }
+                    memberQueue.add(request);
+                    pumpMembers();
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            request.result.completeExceptionally(new IllegalStateException("Gateway is closed"));
+        }
+        request.result.whenComplete((value, error) -> { if (request.result.isCancelled() || error != null) execute(() -> releaseMembers(request)); });
+        return request.result;
+    }
+
+    private synchronized void pumpMembers() {
+        if (closed || !authenticated || socket == null || activeMembers != null) return;
+        MemberRequest next;
+        while ((next = memberQueue.poll()) != null && next.result.isDone()) {}
+        if (next == null) return;
+        activeMembers = next;
+        next.nonce = "m4j" + Long.toString(++memberNonces, 36);
+        next.data.put("nonce", next.nonce);
+        send(8, next.data);
+        armMemberTimer(next);
+    }
+
+    private synchronized void armMemberTimer(MemberRequest request) {
+        if (request.timer != null) request.timer.cancel(false);
+        request.timer = state.schedule(() -> finishMembers(request,
+                new TimeoutException("No member chunk arrived within " + MEMBER_CHUNK_TIMEOUT.toSeconds() + " seconds")),
+                MEMBER_CHUNK_TIMEOUT.toNanos(), TimeUnit.NANOSECONDS);
+    }
+
+    private synchronized void releaseMembers(MemberRequest request) {
+        memberQueue.remove(request);
+        if (activeMembers == request) finishMembers(request, null);
+    }
+
+    private synchronized void finishMembers(MemberRequest request, Throwable failure) {
+        if (request.timer != null) request.timer.cancel(false);
+        if (failure != null) request.result.completeExceptionally(failure);
+        else request.result.complete(List.copyOf(request.members));
+        if (activeMembers == request) { activeMembers = null; pumpMembers(); }
+    }
+
+    private synchronized void memberChunk(String type, JsonNode data) {
+        MemberRequest request = activeMembers;
+        if (request == null) return;
+        if (type.equals("RATE_LIMITED")) {
+            if (data.path("opcode").asInt() != 8 || !request.nonce.equals(data.path("meta").path("nonce").asText(null))) return;
+            long millis = (long) Math.ceil(Math.max(0, data.path("retry_after").asDouble()) * 1000);
+            finishMembers(request, new net.guneyilmaz0.micup4j.requests.GatewayRateLimitException(8, java.time.Duration.ofMillis(millis)));
+            return;
+        }
+        if (!request.nonce.equals(data.path("nonce").asText(null))) return;
+        int index = data.path("chunk_index").asInt(-1), count = data.path("chunk_count").asInt(-1);
+        if (count < 1 || index < 0 || index >= count || (request.chunkCount >= 0 && request.chunkCount != count) || !data.path("members").isArray()) {
+            finishMembers(request, new IllegalStateException("Invalid member chunk"));
+            return;
+        }
+        request.chunkCount = count;
+        if (request.chunks.get(index)) return;
+        request.chunks.set(index);
+        data.path("members").forEach(request.members::add);
+        if (request.chunks.cardinality() == count) finishMembers(request, null);
+        else armMemberTimer(request);
+    }
+
+    private synchronized void interruptMembers() {
+        MemberRequest request = activeMembers;
+        if (request != null) finishMembers(request, new IllegalStateException("Gateway connection was lost before every member chunk arrived"));
     }
 
     private void execute(Runnable operation) {
@@ -253,7 +365,9 @@ public final class GatewayClient implements AutoCloseable {
             authenticated = true;
             client.updateStatus(Micup.Status.CONNECTED);
             flushPresence();
+            pumpMembers();
         }
+        if (type.equals("GUILD_MEMBERS_CHUNK") || type.equals("RATE_LIMITED")) memberChunk(type, data);
         if (!type.equals("RESUMED") && seq <= highestSeen) return;
         highestSeen = Math.max(highestSeen, seq);
         long epoch = sessionEpoch;
@@ -316,6 +430,7 @@ public final class GatewayClient implements AutoCloseable {
     private void retry(ReconnectEvent.Reason reason, int closeCode) {
         if (closed || reconnect != null) return;
         generation++;
+        interruptMembers();
         authenticated = false; presenceInFlight = false;
         if (presenceTask != null) { presenceTask.cancel(false); presenceTask = null; }
         if (heartbeat != null) heartbeat.cancel(false);
@@ -346,6 +461,12 @@ public final class GatewayClient implements AutoCloseable {
     public void close() {
         closed = true;
         state.shutdownNow();
+        synchronized (this) {
+            var failure = new IllegalStateException("Gateway is closed");
+            if (activeMembers != null) { activeMembers.result.completeExceptionally(failure); activeMembers = null; }
+            memberQueue.forEach(request -> request.result.completeExceptionally(failure));
+            memberQueue.clear();
+        }
         if (socket != null) socket.abort();
         var pending = connection;
         if (pending != null) pending.whenComplete((ws, error) -> { if (ws != null) ws.abort(); });

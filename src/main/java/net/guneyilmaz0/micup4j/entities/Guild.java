@@ -150,6 +150,179 @@ public record Guild(String id, String name, String ownerId, boolean available,
         return client;
     }
     /**
+     * Requests members by display-name prefix over the Gateway.
+     *
+     * @param prefix a non-empty prefix
+     * @param limit  1 to 100
+     * @return a running task
+     * @throws IllegalStateException if this guild is detached
+     * @see net.guneyilmaz0.micup4j.Micup#retrieveMembersByPrefix(String, String, int)
+     */
+    public net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> retrieveMembersByPrefix(String prefix, int limit) {
+        return getJDA().retrieveMembersByPrefix(id, prefix, limit);
+    }
+    /**
+     * Requests specific members over the Gateway.
+     *
+     * @param ids 1 to 100 user ids
+     * @return a running task
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> retrieveMembersByIds(String... ids) { return getJDA().retrieveMembersByIds(id, ids); }
+    /**
+     * Requests specific members over the Gateway.
+     *
+     * @param ids 1 to 100 user ids as unsigned 64-bit values
+     * @return a running task
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> retrieveMembersByIds(long... ids) {
+        return retrieveMembersByIds(java.util.Arrays.stream(ids).mapToObj(Long::toUnsignedString).toArray(String[]::new));
+    }
+    /**
+     * Requests the complete member list over the Gateway.
+     *
+     * @return a running task
+     * @throws IllegalStateException if this guild is detached
+     * @see net.guneyilmaz0.micup4j.Micup#loadMembers(String)
+     */
+    public net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> loadMembers() { return getJDA().loadMembers(id); }
+    /**
+     * Searches this guild's member index, a Micup extension.
+     *
+     * @return the fluent search action
+     * @throws IllegalStateException if this guild is detached
+     * @see net.guneyilmaz0.micup4j.Micup#searchMembers(String)
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.MemberSearchAction searchMembers() { return getJDA().searchMembers(id); }
+    /**
+     * Starts creating a role in this guild.
+     *
+     * @return the fluent creation action
+     * @throws IllegalStateException if this guild is detached
+     * @see net.guneyilmaz0.micup4j.Micup#createRole(String)
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.RoleAction createRole() { return getJDA().createRole(id); }
+    /**
+     * Starts modifying a role of this guild. Micup4J roles are not client-bound, so this replaces JDA's {@code role.getManager()}.
+     *
+     * @param role the role
+     * @return the fluent role manager
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.managers.RoleManager modifyRole(ISnowflake role) { return getJDA().modifyRole(id, role.getId()); }
+    /**
+     * Deletes a role of this guild. Replaces JDA's {@code role.delete()}.
+     *
+     * @param role the role
+     * @return the delete action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Void> deleteRole(ISnowflake role) { return getJDA().deleteRole(id, role.getId()); }
+    /**
+     * Adds a role to a member.
+     *
+     * @param user the member or user
+     * @param role the role
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Void> addRoleToMember(ISnowflake user, ISnowflake role) {
+        return getJDA().addMemberRole(id, user.getId(), role.getId());
+    }
+    /**
+     * Removes a role from a member.
+     *
+     * @param user the member or user
+     * @param role the role
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Void> removeRoleFromMember(ISnowflake user, ISnowflake role) {
+        return getJDA().removeMemberRole(id, user.getId(), role.getId());
+    }
+    /**
+     * Changes a member's nickname.
+     *
+     * @param member   the member
+     * @param nickname the nickname, or {@code null} to clear it
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> modifyNickname(ISnowflake member, String nickname) {
+        return getJDA().modifyMemberNickname(id, member.getId(), nickname);
+    }
+    /**
+     * Kicks a member.
+     *
+     * @param user the member or user
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Void> kick(ISnowflake user) { return getJDA().kick(id, user.getId()); }
+    /**
+     * Bans a user permanently.
+     *
+     * @param user              the member or user
+     * @param deletionTimeframe how far back to delete messages, at most 7 days
+     * @param unit              the timeframe unit
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Void> ban(ISnowflake user, int deletionTimeframe, java.util.concurrent.TimeUnit unit) {
+        return getJDA().ban(id, user.getId(), deletionTimeframe, unit);
+    }
+    /**
+     * Removes a ban.
+     *
+     * @param user the banned user
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Void> unban(ISnowflake user) { return getJDA().unban(id, user.getId()); }
+    /**
+     * Times a member out.
+     *
+     * @param user     the member or user
+     * @param duration a positive duration of at most 365 days
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> timeoutFor(ISnowflake user, java.time.Duration duration) {
+        return getJDA().timeoutFor(id, user.getId(), duration);
+    }
+    /**
+     * Times a member out.
+     *
+     * @param user   the member or user
+     * @param amount the positive amount
+     * @param unit   the unit
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> timeoutFor(ISnowflake user, long amount, java.util.concurrent.TimeUnit unit) {
+        return timeoutFor(user, java.time.Duration.of(amount, unit.toChronoUnit()));
+    }
+    /**
+     * Times a member out until an instant.
+     *
+     * @param user  the member or user
+     * @param until a future instant at most 365 days ahead
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> timeoutUntil(ISnowflake user, java.time.temporal.TemporalAccessor until) {
+        return getJDA().timeoutUntil(id, user.getId(), java.time.Instant.from(until));
+    }
+    /**
+     * Removes a member's timeout.
+     *
+     * @param user the member or user
+     * @return the action
+     * @throws IllegalStateException if this guild is detached
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> removeTimeout(ISnowflake user) { return getJDA().removeTimeout(id, user.getId()); }
+    /**
      * Starts a bulk overwrite of this guild's commands.
      *
      * @return the update action

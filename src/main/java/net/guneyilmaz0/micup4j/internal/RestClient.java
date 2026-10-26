@@ -61,6 +61,7 @@ public final class RestClient implements AutoCloseable {
     }
     private static final class Job {
         final String method, path, payload, route, major;
+        final Map<String, String> headers;
         final boolean auth, priority;
         final long deadline, order;
         final CompletableFuture<JsonNode> result = new CompletableFuture<>();
@@ -70,8 +71,8 @@ public final class RestClient implements AutoCloseable {
         long started;
         int attempts;
         boolean running, done;
-        Job(String method, String path, String payload, boolean auth, boolean priority, long deadline, long order) {
-            this.method = method; this.path = path; this.payload = payload; this.auth = auth;
+        Job(String method, String path, String payload, Map<String, String> headers, boolean auth, boolean priority, long deadline, long order) {
+            this.method = method; this.path = path; this.payload = payload; this.headers = headers; this.auth = auth;
             this.priority = priority; this.deadline = deadline; this.order = order;
             String[] keys = routeKeys(method, path, auth);
             route = keys[0]; major = keys[1];
@@ -154,22 +155,46 @@ public final class RestClient implements AutoCloseable {
      * @throws IllegalArgumentException if the method or path is invalid
      */
     public RestAction<JsonNode> request(String method, String path, JsonNode body, boolean auth) {
-        return action(method, path, body, auth, false, Long.MAX_VALUE);
+        return action(method, path, body, Map.of(), auth, false, Long.MAX_VALUE);
+    }
+    /**
+     * Creates an authenticated request with extra headers, such as {@code X-Audit-Log-Reason}. Nothing is sent until the
+     * action is executed.
+     *
+     * @param method  the HTTP method
+     * @param path    the route below {@code /v1}, starting with a single slash
+     * @param body    the JSON body, or {@code null}
+     * @param headers extra request headers, copied; they cannot replace the standard or authentication headers
+     * @return the lazy request
+     * @throws IllegalArgumentException if the method, path or a header is invalid
+     */
+    public RestAction<JsonNode> request(String method, String path, JsonNode body, Map<String, String> headers) {
+        return action(method, path, body, checkedHeaders(headers), true, false, Long.MAX_VALUE);
+    }
+    private static Map<String, String> checkedHeaders(Map<String, String> headers) {
+        var copy = Map.copyOf(headers);
+        for (var entry : copy.entrySet()) {
+            String name = entry.getKey().toLowerCase(java.util.Locale.ROOT);
+            if (!name.matches("x-[a-z0-9-]+")) throw new IllegalArgumentException("Only X- extension headers may be added");
+            if (!entry.getValue().chars().allMatch(c -> c == '\t' || (c >= 0x20 && c < 0x7F)))
+                throw new IllegalArgumentException("Header values must be printable ASCII");
+        }
+        return copy;
     }
     /** Initial interaction callbacks have separate bounded admission and a monotonic local deadline. */
     public RestAction<JsonNode> requestCallback(String path, JsonNode body, long deadlineNanos) {
-        return action("POST", path, body, false, true, deadlineNanos);
+        return action("POST", path, body, Map.of(), false, true, deadlineNanos);
     }
-    private RestAction<JsonNode> action(String method, String path, JsonNode body, boolean auth, boolean priority, long deadline) {
+    private RestAction<JsonNode> action(String method, String path, JsonNode body, Map<String, String> headers, boolean auth, boolean priority, long deadline) {
         if (!Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD").contains(method)) throw new IllegalArgumentException("Invalid HTTP method");
         try {
             if (path == null || !path.startsWith("/") || path.startsWith("//") || path.contains("..") || path.contains("#") || path.contains("\\")) throw new IllegalArgumentException();
             URI.create("/v1" + path);
         } catch (IllegalArgumentException error) { throw new IllegalArgumentException("Invalid API path"); }
         String payload = body == null ? null : body.toString();
-        return new RestAction<>(() -> enqueue(method, path, payload, auth, priority, deadline));
+        return new RestAction<>(() -> enqueue(method, path, payload, headers, auth, priority, deadline));
     }
-    private CompletableFuture<JsonNode> enqueue(String method, String path, String payload, boolean auth, boolean priority, long deadline) {
+    private CompletableFuture<JsonNode> enqueue(String method, String path, String payload, Map<String, String> headers, boolean auth, boolean priority, long deadline) {
         Job job;
         synchronized (lock) {
             if (draining) return CompletableFuture.failedFuture(new RejectedExecutionException("Client is shutting down"));
@@ -179,7 +204,7 @@ public final class RestClient implements AutoCloseable {
                 return CompletableFuture.failedFuture(new RejectedExecutionException("REST queue is full"));
             long effective = Math.min(deadline, System.nanoTime() + config.totalTimeout().toNanos());
             if (effective <= System.nanoTime()) return CompletableFuture.failedFuture(new TimeoutException("Request deadline expired before submission"));
-            job = new Job(method, path, payload, auth, priority, effective, ++order);
+            job = new Job(method, path, payload, headers, auth, priority, effective, ++order);
             if (priority) callbackCount++; else normalCount++;
             jobs.add(job); waiting.add(job); submitted++;
             job.expiry = scheduler.schedule(() -> expire(job), Math.max(0, effective - System.nanoTime()), TimeUnit.NANOSECONDS);
@@ -243,6 +268,7 @@ public final class RestClient implements AutoCloseable {
                     .header("Accept", "application/json").header("User-Agent", MicupVersion.getUserAgent());
             if (job.auth) builder.header("Authorization", "Bot " + token);
             if (job.payload != null) builder.header("Content-Type", "application/json");
+            job.headers.forEach(builder::header);
             flight = http.sendAsync(builder.method(job.method, job.payload == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(job.payload)).build(), HttpResponse.BodyHandlers.ofString());
         } catch (Exception error) { failed(job, new IllegalStateException("Could not start Micup request")); return; }
         synchronized (lock) {

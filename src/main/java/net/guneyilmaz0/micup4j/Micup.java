@@ -7,9 +7,12 @@ import net.guneyilmaz0.micup4j.hooks.EventListener;
 import net.guneyilmaz0.micup4j.interactions.SlashCommand;
 import net.guneyilmaz0.micup4j.internal.*;
 import net.guneyilmaz0.micup4j.requests.RestAction;
+import net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction;
+import net.guneyilmaz0.micup4j.requests.restaction.RoleAction;
 import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -419,24 +422,109 @@ public final class Micup implements AutoCloseable {
     }
 
     /**
+     * Requests members whose display name (nickname, then global name, then username) starts with {@code prefix},
+     * case-insensitively, over the Gateway. Results also update the member cache.
+     *
+     * @param guildId the guild id; the session must be connected to it
+     * @param prefix  a non-empty prefix
+     * @param limit   1 to 100
+     * @return a running task; see {@link GatewayClient#requestMembers} for failure modes
+     * @throws IllegalArgumentException if an argument is invalid
+     */
+    public net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> retrieveMembersByPrefix(String guildId, String prefix, int limit) {
+        if (prefix == null || prefix.isEmpty()) throw new IllegalArgumentException("Prefix must not be empty");
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("Limit must be 1-100");
+        return requestMembers(guildId, Json.object().put("query", prefix).put("limit", limit));
+    }
+
+    /**
+     * Requests specific members over the Gateway. Users that are not members are absent from the result.
+     *
+     * @param guildId the guild id; the session must be connected to it
+     * @param userIds 1 to 100 user ids
+     * @return a running task
+     * @throws IllegalArgumentException if an id is invalid or the count is outside 1-100
+     */
+    public net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> retrieveMembersByIds(String guildId, Collection<String> userIds) {
+        var ids = new LinkedHashSet<String>();
+        for (String userId : userIds) ids.add(Json.id(userId));
+        if (ids.isEmpty() || ids.size() > 100) throw new IllegalArgumentException("Request 1-100 user ids");
+        var data = Json.object();
+        ids.forEach(data.putArray("user_ids")::add);
+        return requestMembers(guildId, data);
+    }
+
+    /**
+     * Requests specific members over the Gateway; see {@link #retrieveMembersByIds(String, Collection)}.
+     *
+     * @param guildId the guild id
+     * @param userIds 1 to 100 user ids
+     * @return a running task
+     */
+    public net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> retrieveMembersByIds(String guildId, String... userIds) {
+        return retrieveMembersByIds(guildId, Arrays.asList(userIds));
+    }
+
+    /**
+     * Requests the complete member list (up to 100,000 members) over the Gateway. Micup admits one such request per bot
+     * and guild every 30 seconds and fails others with {@link net.guneyilmaz0.micup4j.requests.GatewayRateLimitException}.
+     * The whole list is held in memory; the member cache still applies its {@link CachePolicy} bound.
+     *
+     * @param guildId the guild id; the session must be connected to it
+     * @return a running task
+     * @throws IllegalArgumentException if {@code guildId} is not a canonical snowflake
+     */
+    public net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> loadMembers(String guildId) {
+        return requestMembers(guildId, Json.object().put("query", "").put("limit", 0));
+    }
+
+    private net.guneyilmaz0.micup4j.utils.concurrent.Task<List<Member>> requestMembers(String guildId, com.fasterxml.jackson.databind.node.ObjectNode data) {
+        String id = Json.id(guildId);
+        data.put("guild_id", id);
+        var connection = gateway;
+        CompletableFuture<List<JsonNode>> raw = connection == null
+                ? CompletableFuture.failedFuture(new IllegalStateException("Gateway is not connected")) : connection.requestMembers(data);
+        // Parse off the Gateway thread so callbacks never run on it.
+        CompletableFuture<List<Member>> members = raw.thenApplyAsync(nodes ->
+                nodes.stream().map(node -> Member.fromJson(id, node).withClient(this)).toList(), MEMBER_PARSER);
+        members.whenComplete((value, error) -> { if (error != null) raw.cancel(false); });
+        return new GatewayTask<>(members);
+    }
+
+    private static final Executor MEMBER_PARSER = task -> Thread.ofVirtual().name("micup4j-members").start(task);
+
+    /**
+     * Searches Micup's member index. Results are partial and may be stale; see {@link MemberSearchResult}.
+     *
+     * @param guildId the guild id
+     * @return a fluent search action; nothing is sent until it is executed
+     * @throws IllegalArgumentException if {@code guildId} is not a canonical snowflake
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.MemberSearchAction searchMembers(String guildId) {
+        String path = "/guilds/" + Json.id(guildId) + "/members-search";
+        return new net.guneyilmaz0.micup4j.requests.restaction.MemberSearchAction(Json.object(), (body, limit) ->
+                rest.request("POST", path, body).map(data -> MemberSearchResult.fromJson(data, limit)));
+    }
+
+    /**
      * Renames a guild.
      *
      * @param guildId the guild id
      * @param name    the new name, 1 to 100 characters
-     * @return an action that performs the change when queued and completes with the updated guild
+     * @return an action that performs the change when queued and completes with the updated guild; supports an audit reason
      * @throws IllegalArgumentException if an id is not a canonical snowflake or the name is empty or too long
      */
-    public RestAction<Guild> modifyGuildName(String guildId, String name) {
-        return rest.request("PATCH", "/guilds/" + Json.id(guildId), Json.object().put("name", boundedName(name, 100)))
-                .map(data -> Guild.fromJson(data).withClient(this));
+    public AuditableRestAction<Guild> modifyGuildName(String guildId, String name) {
+        var body = Json.object().put("name", boundedName(name, 100));
+        return audited("PATCH", "/guilds/" + Json.id(guildId), body, data -> Guild.fromJson(data).withClient(this));
     }
 
-    /** Null clears the nickname. The server enforces hierarchy and permissions. */
-    public RestAction<Member> modifyMemberNickname(String guildId, String userId, String nickname) {
+    /** Null clears the nickname. The server enforces hierarchy and permissions. Supports an audit reason. */
+    public AuditableRestAction<Member> modifyMemberNickname(String guildId, String userId, String nickname) {
         String id = Json.id(guildId);
         if (nickname != null) boundedName(nickname, 32);
-        return rest.request("PATCH", "/guilds/" + id + "/members/" + Json.id(userId), Json.object().put("nick", nickname))
-                .map(data -> Member.fromJson(id, data).withClient(this));
+        return audited("PATCH", "/guilds/" + id + "/members/" + Json.id(userId), Json.object().put("nick", nickname),
+                data -> Member.fromJson(id, data).withClient(this));
     }
 
     /**
@@ -445,10 +533,10 @@ public final class Micup implements AutoCloseable {
      * @param guildId the guild id
      * @param userId  the user id
      * @param roleId  the role id
-     * @return an action that adds the role when queued
+     * @return an action that adds the role when queued; supports an audit reason
      * @throws IllegalArgumentException if an id is not a canonical snowflake
      */
-    public RestAction<Void> addMemberRole(String guildId, String userId, String roleId) {
+    public AuditableRestAction<Void> addMemberRole(String guildId, String userId, String roleId) {
         return memberRole("PUT", guildId, userId, roleId);
     }
 
@@ -458,26 +546,53 @@ public final class Micup implements AutoCloseable {
      * @param guildId the guild id
      * @param userId  the user id
      * @param roleId  the role id
-     * @return an action that removes the role when queued
+     * @return an action that removes the role when queued; supports an audit reason
      * @throws IllegalArgumentException if an id is not a canonical snowflake
      */
-    public RestAction<Void> removeMemberRole(String guildId, String userId, String roleId) {
+    public AuditableRestAction<Void> removeMemberRole(String guildId, String userId, String roleId) {
         return memberRole("DELETE", guildId, userId, roleId);
     }
 
-    private RestAction<Void> memberRole(String method, String guildId, String userId, String roleId) {
-        return rest.request(method, "/guilds/" + Json.id(guildId) + "/members/" + Json.id(userId) + "/roles/" + Json.id(roleId), null)
-                .map(value -> null);
+    private AuditableRestAction<Void> memberRole(String method, String guildId, String userId, String roleId) {
+        return audited(method, "/guilds/" + Json.id(guildId) + "/members/" + Json.id(userId) + "/roles/" + Json.id(roleId), null, value -> null);
     }
 
-    /** Omit permissions with null to inherit the everyone mask; feature-gated bits follow server defaults. */
-    public RestAction<Role> createRole(String guildId, String name, int color,
-                                      net.guneyilmaz0.micup4j.permissions.PermissionSet permissions) {
+    /**
+     * Creates a role with Micup defaults. Configure it through the returned action before queueing it.
+     *
+     * @param guildId the guild id
+     * @return a fluent creation action; supports an audit reason
+     * @throws IllegalArgumentException if {@code guildId} is not a canonical snowflake
+     */
+    public RoleAction createRole(String guildId) {
         String id = Json.id(guildId);
+        return new RoleAction(new RoleFields(), (fields, reason) ->
+                rest.request("POST", "/guilds/" + id + "/roles", fields.body(), fields.headers(reason)).map(data -> Role.fromJson(id, data)));
+    }
+
+    /**
+     * Creates a role. Null permissions copy the everyone mask; a supplied mask is stored exactly, including
+     * feature-gated bits.
+     */
+    public RoleAction createRole(String guildId, String name, int color,
+                                 net.guneyilmaz0.micup4j.permissions.PermissionSet permissions) {
         if (color < 0 || color > 0xFFFFFF) throw new IllegalArgumentException("Color must be a 24-bit RGB value");
-        var body = Json.object().put("name", boundedName(name, 100)).put("color", color);
-        if (permissions != null) body.put("permissions", permissions.toRequestValue());
-        return rest.request("POST", "/guilds/" + id + "/roles", body).map(data -> Role.fromJson(id, data));
+        return createRole(guildId).setName(name).setColor(color).setPermissions(permissions);
+    }
+
+    /**
+     * Modifies a role. Only fields set on the returned manager are sent, and a supplied permission mask is stored exactly,
+     * including feature-gated bits. Position changes are not part of this route.
+     *
+     * @param guildId the guild id
+     * @param roleId  the role id
+     * @return a fluent manager; supports an audit reason
+     * @throws IllegalArgumentException if an id is not a canonical snowflake
+     */
+    public net.guneyilmaz0.micup4j.managers.RoleManager modifyRole(String guildId, String roleId) {
+        String path = "/guilds/" + Json.id(guildId) + "/roles/" + Json.id(roleId);
+        return new net.guneyilmaz0.micup4j.managers.RoleManager(new RoleFields(), (fields, reason) ->
+                rest.request("PATCH", path, fields.body(), fields.headers(reason)).map(data -> (Void) null));
     }
 
     /**
@@ -486,13 +601,141 @@ public final class Micup implements AutoCloseable {
      * @param guildId the guild id
      * @param roleId  the role id
      * @param name    the new name, 1 to 100 characters
-     * @return an action that performs the change when queued and completes with the updated role
+     * @return an action that performs the change when queued and completes with the updated role; supports an audit reason
      * @throws IllegalArgumentException if an id is not a canonical snowflake or the name is empty or too long
      */
-    public RestAction<Role> modifyRoleName(String guildId, String roleId, String name) {
+    public AuditableRestAction<Role> modifyRoleName(String guildId, String roleId, String name) {
         String id = Json.id(guildId);
-        return rest.request("PATCH", "/guilds/" + id + "/roles/" + Json.id(roleId), Json.object().put("name", boundedName(name, 100)))
-                .map(data -> Role.fromJson(id, data));
+        return audited("PATCH", "/guilds/" + id + "/roles/" + Json.id(roleId), Json.object().put("name", boundedName(name, 100)),
+                data -> Role.fromJson(id, data));
+    }
+
+    /**
+     * Deletes a role.
+     *
+     * @param guildId the guild id
+     * @param roleId  the role id
+     * @return an action that deletes the role when queued; supports an audit reason
+     * @throws IllegalArgumentException if an id is not a canonical snowflake
+     */
+    public AuditableRestAction<Void> deleteRole(String guildId, String roleId) {
+        return audited("DELETE", "/guilds/" + Json.id(guildId) + "/roles/" + Json.id(roleId), null, value -> null);
+    }
+
+    /**
+     * Removes a member from a guild. Requires {@code KICK_MEMBERS} and hierarchy authority.
+     *
+     * @param guildId the guild id
+     * @param userId  the member's user id
+     * @return an action that kicks the member when queued; supports an audit reason
+     * @throws IllegalArgumentException if an id is not a canonical snowflake
+     */
+    public AuditableRestAction<Void> kick(String guildId, String userId) {
+        return audited("DELETE", "/guilds/" + Json.id(guildId) + "/members/" + Json.id(userId), null, value -> null);
+    }
+
+    /**
+     * Bans a user permanently. Requires {@code BAN_MEMBERS}; banning a member also requires hierarchy authority. The reason
+     * is sent in the request body and may contain any Unicode text.
+     *
+     * @param guildId           the guild id
+     * @param userId            the user id; need not be a member
+     * @param deletionTimeframe how far back to delete the user's messages, 0 for none
+     * @param unit              the unit of {@code deletionTimeframe}
+     * @return an action that bans the user when queued; supports a reason
+     * @throws IllegalArgumentException if an id is invalid or the timeframe is negative or exceeds 7 days
+     */
+    public AuditableRestAction<Void> ban(String guildId, String userId, int deletionTimeframe, java.util.concurrent.TimeUnit unit) {
+        return ban(guildId, userId, deletionTimeframe, unit, null);
+    }
+
+    /**
+     * Bans a user, optionally for a limited time (a Micup extension). See {@link #ban(String, String, int, java.util.concurrent.TimeUnit)}.
+     *
+     * @param duration the ban length, 60 seconds to 730 days, or {@code null} for a permanent ban
+     * @throws IllegalArgumentException if the duration is outside its range
+     */
+    public AuditableRestAction<Void> ban(String guildId, String userId, int deletionTimeframe, java.util.concurrent.TimeUnit unit,
+                                         Duration duration) {
+        String path = "/guilds/" + Json.id(guildId) + "/bans/" + Json.id(userId);
+        long seconds = Objects.requireNonNull(unit, "unit").toSeconds(deletionTimeframe);
+        if (deletionTimeframe < 0 || seconds > 604_800) throw new IllegalArgumentException("Message deletion timeframe must be 0-7 days");
+        if (duration != null && (duration.getSeconds() < 60 || duration.getSeconds() > 63_072_000 || duration.getNano() != 0))
+            throw new IllegalArgumentException("Ban duration must be whole seconds between 60 seconds and 730 days");
+        return new AuditableRestAction<>(reason -> {
+            var body = Json.object().put("delete_message_seconds", seconds);
+            if (duration != null) body.put("ban_duration_seconds", duration.getSeconds());
+            if (reason != null) body.put("reason", reason);
+            return rest.request("PUT", path, body).map(value -> (Void) null);
+        }, false);
+    }
+
+    /**
+     * Removes a ban.
+     *
+     * @param guildId the guild id
+     * @param userId  the banned user id
+     * @return an action that removes the ban when queued; supports an audit reason
+     * @throws IllegalArgumentException if an id is not a canonical snowflake
+     */
+    public AuditableRestAction<Void> unban(String guildId, String userId) {
+        return audited("DELETE", "/guilds/" + Json.id(guildId) + "/bans/" + Json.id(userId), null, value -> null);
+    }
+
+    /**
+     * Times a member out for a duration. Requires {@code MODERATE_MEMBERS} and hierarchy authority; administrators cannot be
+     * timed out. The reason is sent in the request body and may contain any Unicode text.
+     *
+     * @param guildId  the guild id
+     * @param userId   the member's user id
+     * @param duration a positive duration of at most 365 days
+     * @return an action that applies the timeout when queued; supports a reason
+     * @throws IllegalArgumentException if an id is invalid or the duration is outside its range
+     */
+    public AuditableRestAction<Member> timeoutFor(String guildId, String userId, Duration duration) {
+        if (duration == null || duration.isNegative() || duration.isZero() || duration.compareTo(Duration.ofDays(365)) > 0)
+            throw new IllegalArgumentException("Timeout must be positive and at most 365 days");
+        return timeout(guildId, userId, () -> Instant.now().plus(duration));
+    }
+
+    /**
+     * Times a member out until an instant; see {@link #timeoutFor(String, String, Duration)}.
+     *
+     * @param until a future instant at most 365 days ahead
+     * @throws IllegalArgumentException if {@code until} is outside its range when this method is called
+     */
+    public AuditableRestAction<Member> timeoutUntil(String guildId, String userId, Instant until) {
+        var now = Instant.now();
+        if (until == null || !until.isAfter(now) || until.isAfter(now.plus(Duration.ofDays(365))))
+            throw new IllegalArgumentException("Timeout must end in the future and at most 365 days ahead");
+        return timeout(guildId, userId, () -> until);
+    }
+
+    /**
+     * Removes a member's timeout.
+     *
+     * @param guildId the guild id
+     * @param userId  the member's user id
+     * @return an action that clears the timeout when queued; supports an audit reason
+     * @throws IllegalArgumentException if an id is not a canonical snowflake
+     */
+    public AuditableRestAction<Member> removeTimeout(String guildId, String userId) {
+        String id = Json.id(guildId);
+        return audited("PATCH", "/guilds/" + id + "/members/" + Json.id(userId), Json.object().putNull("communication_disabled_until"),
+                data -> Member.fromJson(id, data).withClient(this));
+    }
+
+    private AuditableRestAction<Member> timeout(String guildId, String userId, java.util.function.Supplier<Instant> until) {
+        String id = Json.id(guildId), path = "/guilds/" + id + "/members/" + Json.id(userId);
+        return new AuditableRestAction<>(reason -> {
+            var body = Json.object().put("communication_disabled_until", until.get().truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString());
+            if (reason != null) body.put("timeout_reason", reason);
+            return rest.request("PATCH", path, body).map(data -> Member.fromJson(id, data).withClient(this));
+        }, false);
+    }
+
+    private <T> AuditableRestAction<T> audited(String method, String path, JsonNode body, java.util.function.Function<JsonNode, T> mapper) {
+        return new AuditableRestAction<>(reason -> rest.request(method, path, body, AuditableRestAction.reasonHeaders(reason)).map(mapper), true);
     }
 
     private static String boundedName(String value, int maximum) {

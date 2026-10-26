@@ -15,4 +15,23 @@ public enum Permission {
     private final int bit;
     Permission(int bit) { this.bit = bit; }
     public int getBit() { return bit; }
+
+    /**
+     * Returns the feature a role or overwrite write must declare in {@code X-Fluxer-Features} to set or clear this bit.
+     * Without the declaration Micup keeps the stored value of a gated bit.
+     *
+     * @return the feature name, or {@code null} when the bit is not feature-gated
+     */
+    public String getWriteFeature() { return this == VIEW_CHANNEL_MEMBERS ? "view_channel_members_permission" : null; }
+
+    /**
+     * Returns the comma-separated declaration of every feature that gates a permission write, so a submitted mask is
+     * stored exactly as sent.
+     *
+     * @return the {@code X-Fluxer-Features} header value
+     */
+    public static String writeFeatureDeclaration() {
+        return java.util.Arrays.stream(values()).map(Permission::getWriteFeature).filter(java.util.Objects::nonNull)
+                .distinct().collect(java.util.stream.Collectors.joining(","));
+    }
 }

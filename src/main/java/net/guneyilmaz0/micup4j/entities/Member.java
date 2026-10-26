@@ -15,6 +15,30 @@ public record Member(String guildId, User user, String nickname, List<String> ro
     public Member withClient(net.guneyilmaz0.micup4j.Micup client) {
         return new Member(guildId, user.withClient(client), nickname, roleIds, joinedAt, communicationDisabledUntil, mute, deaf, client);
     }
+    private net.guneyilmaz0.micup4j.Micup requireClient() {
+        if (client == null) throw new IllegalStateException("Detached member has no client");
+        return client;
+    }
+    /** Kicks this member. Requires a client-bound member. */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Void> kick() { return requireClient().kick(guildId, getId()); }
+    /** Bans this member permanently; see {@link net.guneyilmaz0.micup4j.Micup#ban(String, String, int, java.util.concurrent.TimeUnit)}. */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Void> ban(int deletionTimeframe, java.util.concurrent.TimeUnit unit) {
+        return requireClient().ban(guildId, getId(), deletionTimeframe, unit);
+    }
+    /** Times this member out for a positive duration of at most 365 days. */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> timeoutFor(java.time.Duration duration) {
+        return requireClient().timeoutFor(guildId, getId(), duration);
+    }
+    /** Times this member out for a positive amount of at most 365 days. */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> timeoutFor(long amount, java.util.concurrent.TimeUnit unit) {
+        return timeoutFor(java.time.Duration.of(amount, unit.toChronoUnit()));
+    }
+    /** Removes this member's timeout. */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> removeTimeout() { return requireClient().removeTimeout(guildId, getId()); }
+    /** Changes this member's nickname; {@code null} clears it. */
+    public net.guneyilmaz0.micup4j.requests.restaction.AuditableRestAction<Member> modifyNickname(String nickname) {
+        return requireClient().modifyMemberNickname(guildId, getId(), nickname);
+    }
     public User getUser() { return user; }
     public String getNickname() { return nickname; }
     public String getAsMention() { return user.getAsMention(); }
