@@ -319,6 +319,69 @@ class GatewayTest extends GatewayFixture {
         client.close(); assertTrue(client.getGuilds().isEmpty());
     }
 
+    @Test void slowCacheApplyDoesNotStallGatewayStatusResumeOrHeartbeat() throws Exception {
+        heartbeatInterval = 200;
+        var observed = new CompletableFuture<net.guneyilmaz0.micup4j.entities.Guild>();
+        start(new ListenerAdapter() {
+            @Override public void onGenericEvent(GenericEvent event) {
+                if (event.getType().equals("GUILD_CREATE")) observed.complete(event.getMicup().findGuildById("1").orElse(null));
+            }
+        });
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        client.cacheApplyHook = () -> { entered.countDown(); awaitUninterruptibly(release); };
+        try {
+            var envelope = Json.object().put("op", 0).put("t", "GUILD_CREATE").put("s", 2);
+            envelope.set("d", EntityCacheTest.snapshot());
+            WebSocket ws = sockets.poll(2, TimeUnit.SECONDS);
+            ws.send(envelope.toString());
+            assertTrue(entered.await(3, TimeUnit.SECONDS));
+            frames.clear();
+            // Reconnect drives RECONNECTING, CONNECTING and CONNECTED status writes on the Gateway scheduler.
+            ws.send("{\"op\":7}");
+            assertEquals("session-123", opcode(6).path("d").path("session_id").asText());
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (client.getStatus() != Micup.Status.CONNECTED && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(Micup.Status.CONNECTED, client.getStatus());
+            opcode(1);
+            assertEquals(1, release.getCount(), "Gateway progress must not depend on the blocked cache apply");
+            assertFalse(observed.isDone(), "Listeners must still wait for the cache apply");
+        } finally {
+            release.countDown();
+        }
+        assertEquals("Guild", observed.get(3, TimeUnit.SECONDS).name());
+    }
+
+    @Test void closeDuringCacheApplyReturnsPromptlyAndLeavesNoStaleEntities() throws Exception {
+        start(new ListenerAdapter() {});
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var applier = new AtomicReference<Thread>();
+        client.cacheApplyHook = () -> { applier.set(Thread.currentThread()); entered.countDown(); awaitUninterruptibly(release); };
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot());
+        assertTrue(entered.await(3, TimeUnit.SECONDS));
+        try {
+            CompletableFuture.runAsync(client::close).get(2, TimeUnit.SECONDS);
+            assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+        } finally {
+            release.countDown();
+        }
+        // shutdownNow retires the single event worker once the in-flight apply returns.
+        applier.get().join(TimeUnit.SECONDS.toMillis(3));
+        assertFalse(applier.get().isAlive());
+        assertTrue(client.getGuilds().isEmpty());
+        assertTrue(client.findGuildById("1").isEmpty());
+    }
+
+    private static void awaitUninterruptibly(CountDownLatch latch) {
+        boolean interrupted = false;
+        while (true) {
+            try { if (latch.await(10, TimeUnit.SECONDS)) break; else throw new IllegalStateException("Test hook was not released"); }
+            catch (InterruptedException error) { interrupted = true; }
+        }
+        if (interrupted) Thread.currentThread().interrupt();
+    }
+
     @Test void lightPresetDeliversRawEventsWithoutCachingEntities() throws Exception {
         var delivered = new CompletableFuture<Void>();
         client = MicupBuilder.createLight("test-token").setInstanceOrigin(server.url("/").uri())
@@ -576,6 +639,25 @@ class GatewayTest extends GatewayFixture {
         assertNull(client.getGuildById(1L).getMemberById("999"));
     }
 
+    @Test void cachedGuildLookupsReturnBoundSnapshotsWithoutPerCallCopies() throws Exception {
+        start(new ListenerAdapter() {});
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot()).get(3, TimeUnit.SECONDS);
+        var guild = client.getGuildById(1L);
+        assertSame(guild, client.getGuildById("1")); assertSame(guild, client.findGuildById("1").orElseThrow());
+        assertSame(guild, client.getGuilds().getFirst()); assertSame(guild.getMembers(), client.getGuildById(1L).getMembers());
+        var member = guild.getMemberById(4L);
+        assertSame(client, guild.getJDA()); assertSame(client, member.client()); assertSame(client, member.getUser().client());
+        assertSame(guild, member.getGuild());
+        // A write that does not touch members rebinds nothing: existing member instances are reused.
+        client.dispatch("CHANNEL_CREATE", 3, Json.parse("{\"id\":\"9\",\"guild_id\":\"1\",\"type\":0,\"name\":\"new\",\"permission_overwrites\":[]}"))
+                .get(3, TimeUnit.SECONDS);
+        var updated = client.getGuildById(1L);
+        assertNotSame(guild, updated); assertSame(member, updated.getMemberById(4L));
+        assertEquals("new", client.getTextChannelById(9L).getName());
+        client.dispatch("CHANNEL_DELETE", 4, Json.parse("{\"id\":\"9\",\"guild_id\":\"1\"}")).get(3, TimeUnit.SECONDS);
+        assertNull(client.getTextChannelById(9L)); assertNotNull(client.getTextChannelById(8L));
+    }
+
     @Test void avatarGetterUsesDiscoveredMediaPrefixAndPreservesNullAvatars() throws Exception {
         start(new ListenerAdapter() {});
         var user = net.guneyilmaz0.micup4j.entities.User.fromJson(Json.parse(
@@ -598,4 +680,480 @@ class GatewayTest extends GatewayFixture {
         assertEquals("GET", route("/messages/@original").getMethod());
     }
 
+    @Test void malformedInteractionTokenDegradesToGenericEventWithoutFailingSession() throws Exception {
+        var delivered = new LinkedBlockingQueue<GenericEvent>();
+        start(new ListenerAdapter() {
+            @Override public void onEvent(GenericEvent event) {
+                if (event.getType().equals("INTERACTION_CREATE")) delivered.add(event);
+                super.onEvent(event);
+            }
+        });
+        WebSocket ws = sockets.poll(2, TimeUnit.SECONDS);
+        String[] tokens = {"\"token\":\"   \",", "", "\"token\":12345,"};
+        long seq = 2;
+        for (String token : tokens) {
+            ws.send("{\"op\":0,\"t\":\"INTERACTION_CREATE\",\"s\":" + seq++ + ",\"d\":{\"id\":\"123\",\"application_id\":\"42\","
+                    + token + "\"type\":2,\"data\":{\"name\":\"ping\"}}}");
+            var event = delivered.poll(3, TimeUnit.SECONDS);
+            assertNotNull(event);
+            assertSame(GenericEvent.class, event.getClass());
+            assertEquals(seq - 1, event.getSequence());
+        }
+        assertEquals(Micup.Status.CONNECTED, client.getStatus());
+        assertEquals(3, errors.size());
+        for (Throwable error : errors) {
+            assertEquals("Invalid INTERACTION_CREATE payload", error.getMessage());
+            assertNull(error.getCause());
+            assertFalse(String.valueOf(error).contains("12345"));
+        }
+        // A well-formed interaction afterwards is still typed.
+        ws.send("{\"op\":0,\"t\":\"INTERACTION_CREATE\",\"s\":5,\"d\":{\"id\":\"123\",\"application_id\":\"42\","
+                + "\"token\":\"interaction-secret\",\"type\":2,\"data\":{\"name\":\"ping\"}}}");
+        assertInstanceOf(InteractionCreateEvent.class, delivered.poll(3, TimeUnit.SECONDS));
+        for (Throwable error : errors) assertFalse(String.valueOf(error).contains("interaction-secret"));
+    }
+
+    /** Records the JDA-style callback order of the typed message and member events. */
+    static final class TypedEventRecorder extends ListenerAdapter {
+        final List<String> trace = new CopyOnWriteArrayList<>();
+        final BlockingQueue<GenericEvent> events = new LinkedBlockingQueue<>();
+        @Override public void onGenericEvent(GenericEvent event) {
+            if (event.getType().startsWith("MESSAGE_") || event.getType().startsWith("GUILD_MEMBER_")) {
+                trace.add("generic:" + event.getType()); events.add(event);
+            }
+        }
+        @Override public void onGenericMessage(net.guneyilmaz0.micup4j.events.message.GenericMessageEvent event) { trace.add("genericMessage"); }
+        @Override public void onMessageReceived(net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent event) { trace.add("received"); }
+        @Override public void onMessageUpdate(net.guneyilmaz0.micup4j.events.message.MessageUpdateEvent event) { trace.add("update"); }
+        @Override public void onMessageDelete(net.guneyilmaz0.micup4j.events.message.MessageDeleteEvent event) { trace.add("delete"); }
+        @Override public void onGenericGuild(net.guneyilmaz0.micup4j.events.guild.GenericGuildEvent event) {
+            if (event.getType().startsWith("GUILD_MEMBER_")) trace.add("genericGuild");
+        }
+        @Override public void onGenericGuildMember(net.guneyilmaz0.micup4j.events.guild.member.GenericGuildMemberEvent event) { trace.add("genericMember"); }
+        @Override public void onGuildMemberJoin(net.guneyilmaz0.micup4j.events.guild.member.GuildMemberJoinEvent event) { trace.add("join"); }
+        @Override public void onGuildMemberRemove(net.guneyilmaz0.micup4j.events.guild.member.GuildMemberRemoveEvent event) { trace.add("remove"); }
+        GenericEvent next() throws InterruptedException {
+            GenericEvent event = events.poll(3, TimeUnit.SECONDS); assertNotNull(event); return event;
+        }
+    }
+
+    @Test void typedMessageUpdateAndDeleteEventsKeepWireTypeSequenceAndCallbackOrder() throws Exception {
+        var recorder = new TypedEventRecorder();
+        start(recorder);
+        client.dispatch("MESSAGE_CREATE", 2, Json.parse("{\"id\":\"10\",\"channel_id\":\"8\",\"content\":\"hi\","
+                + "\"author\":{\"id\":\"4\",\"username\":\"User\"}}")).get(3, TimeUnit.SECONDS);
+        assertInstanceOf(net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent.class, recorder.next());
+        assertEquals(List.of("generic:MESSAGE_CREATE", "genericMessage", "received"), recorder.trace);
+        recorder.trace.clear();
+
+        client.dispatch("MESSAGE_UPDATE", 3, Json.parse("{\"id\":\"10\",\"channel_id\":\"8\",\"guild_id\":\"1\","
+                + "\"content\":\"edited secret\",\"author\":{\"id\":\"4\",\"username\":\"User\",\"global_name\":\"Shown\"},"
+                + "\"member\":{\"nick\":\"Nick\",\"roles\":[\"2\"]}}")).get(3, TimeUnit.SECONDS);
+        var update = assertInstanceOf(net.guneyilmaz0.micup4j.events.message.MessageUpdateEvent.class, recorder.next());
+        assertEquals(List.of("generic:MESSAGE_UPDATE", "genericMessage", "update"), recorder.trace);
+        assertEquals("MESSAGE_UPDATE", update.getType()); assertEquals(3, update.getSequence()); assertEquals(3, update.getResponseNumber());
+        assertEquals("10", update.getMessageId()); assertEquals(10L, update.getMessageIdLong()); assertEquals("8", update.getChannelId());
+        assertTrue(update.isFromGuild()); assertEquals("1", update.getGuildId()); assertEquals("1", update.getGuild().getId());
+        assertEquals("edited secret", update.getMessage().getContentRaw());
+        assertEquals("Nick", update.getMember().getNickname()); assertEquals("4", update.getMember().getId());
+        assertEquals("Shown", update.getMember().getUser().getGlobalName()); assertEquals(List.of("2"), update.getMember().roleIds());
+        assertSame(client, update.getJDA()); assertFalse(update.toString().contains("secret"));
+        recorder.trace.clear();
+
+        client.dispatch("MESSAGE_DELETE", 4, Json.parse("{\"id\":\"10\",\"channel_id\":\"8\",\"guild_id\":\"1\","
+                + "\"content\":\"deleted secret\",\"author_id\":\"4\"}")).get(3, TimeUnit.SECONDS);
+        var deleted = assertInstanceOf(net.guneyilmaz0.micup4j.events.message.MessageDeleteEvent.class, recorder.next());
+        assertEquals(List.of("generic:MESSAGE_DELETE", "genericMessage", "delete"), recorder.trace);
+        assertEquals("MESSAGE_DELETE", deleted.getType()); assertEquals(4, deleted.getSequence());
+        assertEquals("deleted secret", deleted.getContentRaw()); assertEquals("4", deleted.getAuthorId());
+        assertFalse(deleted.toString().contains("secret"));
+
+        // Moderation and system deletes omit content and author; a DM delete has no guild.
+        client.dispatch("MESSAGE_DELETE", 5, Json.parse("{\"id\":\"11\",\"channel_id\":\"7\"}")).get(3, TimeUnit.SECONDS);
+        var moderated = assertInstanceOf(net.guneyilmaz0.micup4j.events.message.MessageDeleteEvent.class, recorder.next());
+        assertNull(moderated.getContentRaw()); assertNull(moderated.getAuthorId()); assertNull(moderated.getGuildId());
+        assertFalse(moderated.isFromGuild()); assertThrows(IllegalStateException.class, moderated::getGuild);
+        assertEquals(net.guneyilmaz0.micup4j.entities.channel.ChannelType.PRIVATE, moderated.getChannelType());
+        assertTrue(errors.isEmpty());
+    }
+
+    @Test void malformedMessageEventsDegradeWithoutLeakingDeletedContent() throws Exception {
+        var recorder = new TypedEventRecorder();
+        start(recorder);
+        client.dispatch("MESSAGE_DELETE", 2, Json.parse("{\"id\":\"not-an-id\",\"channel_id\":\"7\",\"content\":\"private words\"}"))
+                .get(3, TimeUnit.SECONDS);
+        assertSame(GenericEvent.class, recorder.next().getClass());
+        client.dispatch("MESSAGE_UPDATE", 3, Json.parse("{\"id\":\"10\",\"content\":\"private words\"}")).get(3, TimeUnit.SECONDS);
+        var raw = recorder.next();
+        assertSame(GenericEvent.class, raw.getClass()); assertEquals(3, raw.getSequence());
+        assertEquals(Micup.Status.CONNECTED, client.getStatus());
+        assertEquals(List.of("Invalid MESSAGE_DELETE payload", "Invalid MESSAGE_UPDATE payload"), errors.stream().map(Throwable::getMessage).toList());
+        for (Throwable error : errors) { assertNull(error.getCause()); assertFalse(String.valueOf(error).contains("private")); }
+    }
+
+    @Test void memberJoinAndRemoveUseCacheSnapshotsAroundTheApply() throws Exception {
+        var recorder = new TypedEventRecorder();
+        var removedSeenInCache = new CompletableFuture<Boolean>();
+        start(new ListenerAdapter() {
+            @Override public void onEvent(GenericEvent event) {
+                recorder.onEvent(event);
+                if (event.getType().equals("GUILD_MEMBER_REMOVE"))
+                    removedSeenInCache.complete(client.getGuildById("1").getMemberById("4") != null);
+            }
+        });
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot()).get(3, TimeUnit.SECONDS);
+
+        client.dispatch("GUILD_MEMBER_ADD", 3, Json.parse("{\"guild_id\":\"1\",\"user\":{\"id\":\"5\",\"username\":\"New\"},"
+                + "\"nick\":\"Newbie\",\"roles\":[]}")).get(3, TimeUnit.SECONDS);
+        var join = assertInstanceOf(net.guneyilmaz0.micup4j.events.guild.member.GuildMemberJoinEvent.class, recorder.next());
+        assertEquals(List.of("generic:GUILD_MEMBER_ADD", "genericGuild", "genericMember", "join"), recorder.trace);
+        assertEquals("GUILD_MEMBER_ADD", join.getType()); assertEquals(3, join.getSequence());
+        assertEquals("5", join.getMember().getId()); assertEquals("Newbie", join.getMember().getNickname());
+        assertEquals("New", join.getUser().getName()); assertSame(client, join.getMember().client());
+        assertEquals("Guild", join.getGuild().getName()); assertNotNull(join.getGuild().getMemberById("5"));
+        recorder.trace.clear();
+
+        client.dispatch("GUILD_MEMBER_REMOVE", 4, Json.parse("{\"guild_id\":\"1\",\"user\":{\"id\":\"4\"}}")).get(3, TimeUnit.SECONDS);
+        var remove = assertInstanceOf(net.guneyilmaz0.micup4j.events.guild.member.GuildMemberRemoveEvent.class, recorder.next());
+        assertEquals(List.of("generic:GUILD_MEMBER_REMOVE", "genericGuild", "remove"), recorder.trace);
+        assertFalse(net.guneyilmaz0.micup4j.events.guild.member.GenericGuildMemberEvent.class.isInstance(remove));
+        assertEquals("GUILD_MEMBER_REMOVE", remove.getType()); assertEquals(4, remove.getSequence());
+        assertEquals("4", remove.getMember().getId()); assertEquals(List.of("2"), remove.getMember().roleIds());
+        assertEquals("User", remove.getUser().getName()); assertSame(remove.getMember().getUser(), remove.getUser());
+        assertNull(remove.getGuild().getMemberById("4"));
+        assertFalse(removedSeenInCache.get(3, TimeUnit.SECONDS));
+        assertNull(client.getGuildById("1").getMemberById("4"));
+
+        // An uncached guild still produces typed events with an id-only guild reference.
+        client.dispatch("GUILD_MEMBER_ADD", 5, Json.parse("{\"guild_id\":\"77\",\"user\":{\"id\":\"6\",\"username\":\"Far\"},\"roles\":[]}"))
+                .get(3, TimeUnit.SECONDS);
+        var farJoin = assertInstanceOf(net.guneyilmaz0.micup4j.events.guild.member.GuildMemberJoinEvent.class, recorder.next());
+        assertEquals("77", farJoin.getGuild().getId()); assertEquals("", farJoin.getGuild().getName());
+        assertEquals("77", farJoin.getMember().guildId()); assertNull(client.getGuildById("77"));
+        assertTrue(errors.isEmpty());
+    }
+
+    @Test void memberRemoveWithoutCacheExposesOnlyTheUserId() throws Exception {
+        var recorder = new TypedEventRecorder();
+        startLight(recorder);
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot()).get(3, TimeUnit.SECONDS);
+        client.dispatch("GUILD_MEMBER_REMOVE", 3, Json.parse("{\"guild_id\":\"1\",\"user\":{\"id\":\"4\"}}")).get(3, TimeUnit.SECONDS);
+        var remove = assertInstanceOf(net.guneyilmaz0.micup4j.events.guild.member.GuildMemberRemoveEvent.class, recorder.next());
+        assertNull(remove.getMember());
+        assertEquals("4", remove.getUser().getId()); assertEquals("", remove.getUser().getName()); assertSame(client, remove.getUser().client());
+        assertEquals("1", remove.getGuildId());
+        client.dispatch("GUILD_MEMBER_ADD", 4, Json.parse("{\"guild_id\":\"1\",\"user\":{\"id\":\"5\",\"username\":\"New\"},\"roles\":[]}"))
+                .get(3, TimeUnit.SECONDS);
+        assertEquals("5", assertInstanceOf(net.guneyilmaz0.micup4j.events.guild.member.GuildMemberJoinEvent.class, recorder.next()).getMember().getId());
+        assertTrue(client.getGuilds().isEmpty()); assertTrue(errors.isEmpty());
+    }
+
+    @Test void malformedMemberRemoveDegradesToGenericEventAndKeepsTheSession() throws Exception {
+        var recorder = new TypedEventRecorder();
+        start(recorder);
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot()).get(3, TimeUnit.SECONDS);
+        // The returned future completes normally, so the sequence is acknowledged by the next heartbeat.
+        client.dispatch("GUILD_MEMBER_REMOVE", 3, Json.parse("{\"guild_id\":\"1\",\"user\":{}}")).get(3, TimeUnit.SECONDS);
+        var raw = recorder.next();
+        assertSame(GenericEvent.class, raw.getClass()); assertEquals(3, raw.getSequence());
+        assertEquals(List.of("generic:GUILD_MEMBER_REMOVE"), recorder.trace);
+        assertEquals(Micup.Status.CONNECTED, client.getStatus());
+        assertEquals(1, errors.size()); assertEquals("Invalid GUILD_MEMBER_REMOVE payload", errors.getFirst().getMessage());
+        assertNotNull(client.getGuildById("1").getMemberById("4"));
+    }
+
+    // T7: graceful shutdown. User lookups are routed through a test-controlled handler; everything else keeps the
+    // fixture behaviour.
+    private void routeUsers(java.util.function.Function<RecordedRequest, MockResponse> handler) {
+        var fixture = server.getDispatcher();
+        server.setDispatcher(new okhttp3.mockwebserver.Dispatcher() {
+            @Override public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
+                return request.getPath().startsWith("/public/v1/users/") ? handler.apply(request) : fixture.dispatch(request);
+            }
+        });
+    }
+    private MockResponse user(String id) { return json("{\"id\":\"" + id + "\",\"username\":\"user\"}"); }
+    private static void await(CountDownLatch latch) {
+        try { latch.await(10, TimeUnit.SECONDS); } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+    }
+
+    @Test void shutdownDrainsInFlightRequestAndRejectsNewWork() throws Exception {
+        start(new ListenerAdapter() {});
+        var received = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        routeUsers(request -> { received.countDown(); await(release); return user("7"); });
+        try {
+            var inFlight = client.retrieveUserById("7").submit();
+            assertTrue(received.await(3, TimeUnit.SECONDS));
+            client.shutdown();
+            assertEquals(Micup.Status.SHUTTING_DOWN, client.getStatus());
+            var rejected = assertThrows(ExecutionException.class, () -> client.retrieveUserById("8").submit().get(2, TimeUnit.SECONDS));
+            assertInstanceOf(RejectedExecutionException.class, rejected.getCause());
+            assertEquals("Client is shutting down", rejected.getCause().getMessage());
+            assertFalse(client.awaitShutdown(Duration.ofMillis(100)), "The drain must wait for the in-flight request");
+            assertFalse(client.termination().isDone());
+            release.countDown();
+            assertEquals("7", inFlight.get(3, TimeUnit.SECONDS).getId());
+            assertTrue(client.awaitShutdown(Duration.ofSeconds(3)));
+            assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+            assertNull(client.termination().get(1, TimeUnit.SECONDS));
+            assertTrue(errors.isEmpty(), errors.toString());
+        } finally { release.countDown(); }
+    }
+
+    @Test void shutdownLetsQueuedRateLimitRetryFinish() throws Exception {
+        start(new ListenerAdapter() {});
+        var attempts = new AtomicInteger();
+        var limited = new CountDownLatch(1);
+        routeUsers(request -> {
+            if (attempts.incrementAndGet() > 1) return user("7");
+            limited.countDown();
+            return json("{\"code\":\"RATE_LIMITED\",\"retry_after\":0.2,\"global\":false}").setResponseCode(429);
+        });
+        var pending = client.retrieveUserById("7").submit();
+        assertTrue(limited.await(3, TimeUnit.SECONDS));
+        client.shutdown();
+        assertEquals("7", pending.get(3, TimeUnit.SECONDS).getId());
+        assertEquals(2, attempts.get());
+        assertTrue(client.awaitShutdown(3, TimeUnit.SECONDS));
+        assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+    }
+
+    @Test void shutdownTimeoutCancelsRemainingRequests() throws Exception {
+        restConfig = restConfig.withShutdownTimeout(Duration.ofMillis(200));
+        start(new ListenerAdapter() {});
+        var received = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        routeUsers(request -> { received.countDown(); await(release); return user("7"); });
+        try {
+            var stuck = client.retrieveUserById("7").submit();
+            assertTrue(received.await(3, TimeUnit.SECONDS));
+            long started = System.nanoTime();
+            client.shutdown();
+            assertNull(client.termination().get(3, TimeUnit.SECONDS));
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) >= 150, "The drain must last until its timeout");
+            assertThrows(ExecutionException.class, () -> stuck.get(1, TimeUnit.SECONDS));
+            assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+        } finally { release.countDown(); }
+    }
+
+    @Test void shutdownNowEscalatesARunningDrain() throws Exception {
+        start(new ListenerAdapter() {});
+        var received = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        routeUsers(request -> { received.countDown(); await(release); return user("7"); });
+        try {
+            var stuck = client.retrieveUserById("7").submit();
+            assertTrue(received.await(3, TimeUnit.SECONDS));
+            client.shutdown();
+            assertEquals(Micup.Status.SHUTTING_DOWN, client.getStatus());
+            client.shutdownNow();
+            assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+            assertTrue(client.termination().isDone());
+            assertThrows(ExecutionException.class, () -> stuck.get(2, TimeUnit.SECONDS));
+            assertTrue(client.awaitShutdown(0, TimeUnit.SECONDS));
+        } finally { release.countDown(); }
+    }
+
+    @Test void shutdownFromListenerReturnsAtOnceAndSilencesTheGateway() throws Exception {
+        heartbeatInterval = 80;
+        var statuses = new CopyOnWriteArrayList<Micup.Status>();
+        var returned = new CompletableFuture<Long>();
+        var awaited = new CompletableFuture<Boolean>();
+        var laterEvents = new AtomicInteger();
+        start(new ListenerAdapter() {
+            @Override public void onStatusChange(StatusChangeEvent event) { statuses.add(event.getNewStatus()); }
+            @Override public void onGenericEvent(GenericEvent event) {
+                if (event.getType().equals("LATER")) laterEvents.incrementAndGet();
+            }
+            @Override public void onMessageReceived(MessageReceivedEvent event) {
+                long started = System.nanoTime();
+                event.getMicup().shutdown();
+                returned.complete(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+                // Finishing never needs the event thread, so waiting here cannot deadlock.
+                try { awaited.complete(event.getMicup().awaitShutdown(Duration.ofSeconds(3))); }
+                catch (Throwable error) { awaited.completeExceptionally(error); }
+            }
+        });
+        WebSocket ws = sockets.poll(2, TimeUnit.SECONDS);
+        ws.send("{\"op\":0,\"t\":\"MESSAGE_CREATE\",\"s\":2,\"d\":{\"id\":\"3\",\"channel_id\":\"2\",\"author\":{\"id\":\"5\"}}}");
+        ws.send("{\"op\":0,\"t\":\"LATER\",\"s\":3,\"d\":{}}");
+        assertTrue(returned.get(3, TimeUnit.SECONDS) < 1000, "shutdown() must not block a listener");
+        assertTrue(awaited.get(5, TimeUnit.SECONDS));
+        assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+        frames.clear();
+        Thread.sleep(300); // Several heartbeat intervals.
+        assertTrue(frames.isEmpty(), "The Gateway must send nothing after shutdown: " + frames);
+        assertEquals(0, laterEvents.get(), "Queued Gateway events must not start after shutdown");
+        assertTrue(statuses.contains(Micup.Status.SHUTTING_DOWN));
+        assertTrue(errors.isEmpty(), errors.toString());
+    }
+
+    @Test void shutdownAndCloseAreIdempotentAndReportShuttingDownOnce() throws Exception {
+        var statuses = new CopyOnWriteArrayList<Micup.Status>();
+        var shuttingDown = new CountDownLatch(1);
+        start(new ListenerAdapter() {
+            @Override public void onStatusChange(StatusChangeEvent event) {
+                statuses.add(event.getNewStatus());
+                if (event.getNewStatus() == Micup.Status.SHUTTING_DOWN) shuttingDown.countDown();
+            }
+        });
+        client.shutdown();
+        client.shutdown();
+        assertTrue(client.awaitShutdown());
+        assertTrue(shuttingDown.await(3, TimeUnit.SECONDS));
+        client.close();
+        client.close();
+        client.shutdownNow();
+        client.shutdown();
+        assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+        assertEquals(1, statuses.stream().filter(status -> status == Micup.Status.SHUTTING_DOWN).count());
+        assertFalse(statuses.contains(Micup.Status.FAILED));
+        assertThrows(IllegalStateException.class, () -> client.getPresence().setIdle(true));
+        assertTrue(errors.isEmpty(), errors.toString());
+    }
+
+    /** Records the shutdown-related events a JDA-style listener observes, in order, with the delivering thread. */
+    private static final class ShutdownRecorder extends ListenerAdapter {
+        final List<String> seen = new CopyOnWriteArrayList<>();
+        final CompletableFuture<net.guneyilmaz0.micup4j.events.session.ShutdownEvent> shutdown = new CompletableFuture<>();
+        @Override public void onStatusChange(StatusChangeEvent event) {
+            seen.add(event.getPreviousStatus() + "->" + event.getNewStatus());
+        }
+        @Override public void onShutdown(net.guneyilmaz0.micup4j.events.session.ShutdownEvent event) {
+            seen.add("ShutdownEvent@" + Thread.currentThread().getName());
+            shutdown.complete(event);
+        }
+    }
+
+    @Test void gracefulShutdownDeliversFinalStatusAndShutdownEventOnce() throws Exception {
+        var recorder = new ShutdownRecorder();
+        start(recorder);
+        client.shutdown();
+        var event = recorder.shutdown.get(3, TimeUnit.SECONDS);
+        assertTrue(client.awaitShutdown(Duration.ofSeconds(3)));
+        assertEquals(1000, event.getCode());
+        assertSame(client, event.getJDA());
+        assertNotNull(event.getTimeShutdown());
+        Thread.sleep(100); // A duplicate would arrive by now.
+        var seen = List.copyOf(recorder.seen);
+        int shuttingDown = seen.indexOf("CONNECTED->SHUTTING_DOWN");
+        int shutdown = seen.indexOf("SHUTTING_DOWN->SHUTDOWN");
+        assertTrue(shuttingDown >= 0 && shutdown > shuttingDown, seen.toString());
+        assertEquals(seen.size() - 1, seen.indexOf("ShutdownEvent@micup4j-events"), seen.toString());
+        assertEquals(1, seen.stream().filter(entry -> entry.endsWith("->SHUTDOWN")).count(), seen.toString());
+        assertEquals(1, seen.stream().filter(entry -> entry.startsWith("ShutdownEvent")).count(), seen.toString());
+        client.shutdownNow();
+        Thread.sleep(50);
+        assertEquals(seen, List.copyOf(recorder.seen), "A later shutdownNow must not deliver the events again");
+        assertTrue(errors.isEmpty(), errors.toString());
+    }
+
+    @Test void shutdownNowDeliversFinalStatusAndShutdownEventOffTheCaller() throws Exception {
+        var recorder = new ShutdownRecorder();
+        start(recorder);
+        client.shutdownNow();
+        assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+        var event = recorder.shutdown.get(3, TimeUnit.SECONDS);
+        assertEquals(1000, event.getCode());
+        Thread.sleep(100);
+        var seen = List.copyOf(recorder.seen);
+        assertTrue(seen.contains("SHUTTING_DOWN->SHUTDOWN"), seen.toString());
+        assertEquals(1, seen.stream().filter(entry -> entry.endsWith("->SHUTDOWN")).count(), seen.toString());
+        assertEquals("ShutdownEvent@micup4j-shutdown", seen.get(seen.size() - 1), seen.toString());
+        client.close();
+        client.shutdown();
+        Thread.sleep(50);
+        assertEquals(seen, List.copyOf(recorder.seen));
+        assertTrue(errors.isEmpty(), errors.toString());
+    }
+
+    @Test void shutdownNowDeliversFinalEventsOnlyAfterABlockedListenerReturns() throws Exception {
+        var seen = new CopyOnWriteArrayList<String>();
+        var armed = new java.util.concurrent.atomic.AtomicBoolean();
+        var active = new java.util.concurrent.atomic.AtomicInteger();
+        var overlapped = new java.util.concurrent.atomic.AtomicBoolean();
+        var entered = new CountDownLatch(1);
+        var shutdownEvent = new CompletableFuture<Void>();
+        start(new ListenerAdapter() {
+            @Override public void onGenericEvent(GenericEvent event) {
+                if (active.incrementAndGet() > 1) overlapped.set(true);
+                try {
+                    if (event instanceof StatusChangeEvent change) seen.add(change.getPreviousStatus() + "->" + change.getNewStatus());
+                    else if (event instanceof net.guneyilmaz0.micup4j.events.session.ShutdownEvent) {
+                        seen.add("ShutdownEvent");
+                        shutdownEvent.complete(null);
+                    } else if (armed.compareAndSet(true, false)) {
+                        entered.countDown();
+                        // Ignore the shutdownNow interrupt, like a listener stuck in uninterruptible I/O.
+                        long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(400);
+                        boolean interrupted = false;
+                        for (long left; (left = until - System.nanoTime()) > 0; ) {
+                            try { TimeUnit.NANOSECONDS.sleep(left); } catch (InterruptedException ignored) { interrupted = true; }
+                        }
+                        seen.add("blocked-listener-returned");
+                        if (interrupted) Thread.currentThread().interrupt();
+                    }
+                } finally {
+                    active.decrementAndGet();
+                }
+            }
+        });
+        armed.set(true);
+        client.dispatch("GUILD_CREATE", 2, EntityCacheTest.snapshot());
+        assertTrue(entered.await(3, TimeUnit.SECONDS));
+        long started = System.nanoTime();
+        client.shutdownNow();
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 300, "shutdownNow must not wait for the listener");
+        assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+        // Termination must not depend on the event thread, so awaiting it while the listener is blocked succeeds.
+        assertTrue(client.awaitShutdown(Duration.ofSeconds(3)));
+        assertFalse(seen.contains("blocked-listener-returned"), "Termination should complete while the listener still runs");
+        shutdownEvent.get(3, TimeUnit.SECONDS);
+        Thread.sleep(100); // A duplicate or a late listener call would arrive by now.
+        var order = List.copyOf(seen);
+        int returned = order.indexOf("blocked-listener-returned");
+        assertTrue(returned >= 0, order.toString());
+        assertTrue(order.indexOf("SHUTTING_DOWN->SHUTDOWN") > returned, order.toString());
+        assertEquals(order.size() - 1, order.indexOf("ShutdownEvent"), order.toString());
+        assertEquals(1, order.stream().filter("ShutdownEvent"::equals).count(), order.toString());
+        assertEquals(1, order.stream().filter(entry -> entry.endsWith("->SHUTDOWN")).count(), order.toString());
+        assertFalse(overlapped.get(), "Final events must not run concurrently with another listener");
+        assertTrue(errors.isEmpty(), errors.toString());
+    }
+
+    @Test void awaitShutdownRejectsGuardedSchedulerThreads() throws Exception {
+        start(new ListenerAdapter() {});
+        var outcome = new CompletableFuture<Throwable>();
+        Thread guarded = net.guneyilmaz0.micup4j.internal.ThreadGuards.guarded(Thread.ofPlatform().factory()).newThread(() -> {
+            try { client.awaitShutdown(Duration.ofMillis(10)); outcome.complete(null); }
+            catch (Throwable error) { outcome.complete(error); }
+        });
+        guarded.start();
+        assertInstanceOf(IllegalStateException.class, outcome.get(3, TimeUnit.SECONDS));
+        assertFalse(client.awaitShutdown(Duration.ofMillis(10)), "A running client has not shut down");
+    }
+
+    @Test void shutdownBeforeDiscoveryCompletesNeverConnects() throws Exception {
+        var discovering = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var fixture = server.getDispatcher();
+        server.setDispatcher(new okhttp3.mockwebserver.Dispatcher() {
+            @Override public MockResponse dispatch(RecordedRequest request) throws InterruptedException {
+                if (request.getPath().equals("/.well-known/fluxer")) { discovering.countDown(); await(release); }
+                return fixture.dispatch(request);
+            }
+        });
+        try {
+            client = MicupBuilder.createDefault("test-token").setInstanceOrigin(server.url("/").uri()).setErrorHandler(errors::add).build();
+            assertTrue(discovering.await(3, TimeUnit.SECONDS));
+            client.shutdown();
+            assertTrue(client.awaitShutdown(3, TimeUnit.SECONDS));
+            assertEquals(Micup.Status.SHUTDOWN, client.getStatus());
+            assertThrows(ExecutionException.class, () -> client.ready().get(1, TimeUnit.SECONDS));
+        } finally { release.countDown(); }
+        Thread.sleep(200);
+        assertEquals(0, connections.get());
+        assertTrue(errors.isEmpty(), errors.toString());
+    }
 }

@@ -26,6 +26,7 @@ abstract class GatewayFixture {
     volatile boolean acknowledge = true, hello = true;
     volatile String readyGuilds = "[]";
     GatewayConfig gatewayConfig = GatewayConfig.defaults();
+    net.guneyilmaz0.micup4j.config.RestConfig restConfig = net.guneyilmaz0.micup4j.config.RestConfig.defaults();
 
     @BeforeEach void setup() throws Exception {
         server = new MockWebServer(); server.start();
@@ -60,11 +61,21 @@ abstract class GatewayFixture {
     Micup start(ListenerAdapter listener) throws Exception {
         var readyDelivered = new CountDownLatch(1);
         client = MicupBuilder.createDefault("test-token").setInstanceOrigin(server.url("/").uri())
-            .setGatewayConfig(gatewayConfig).setShard(0, 2).setIgnoredEvents("TYPING_START").setErrorHandler(errors::add).addEventListeners(new ListenerAdapter() {
+            .setGatewayConfig(gatewayConfig).setRestConfig(restConfig).setShard(0, 2).setIgnoredEvents("TYPING_START").setErrorHandler(errors::add).addEventListeners(new ListenerAdapter() {
                 @Override public void onReady(ReadyEvent event) { readyDelivered.countDown(); }
             }, listener).build();
         client.awaitReady(Duration.ofSeconds(5));
         // Authentication wakes awaitReady before its dispatch is processed; direct fixture injections need this barrier.
+        assertTrue(readyDelivered.await(3, TimeUnit.SECONDS)); return client;
+    }
+    /** Starts a client with the light preset (entity caching disabled) and waits until Ready is delivered. */
+    Micup startLight(ListenerAdapter listener) throws Exception {
+        var readyDelivered = new CountDownLatch(1);
+        client = MicupBuilder.createLight("test-token").setInstanceOrigin(server.url("/").uri())
+            .setErrorHandler(errors::add).addEventListeners(new ListenerAdapter() {
+                @Override public void onReady(ReadyEvent event) { readyDelivered.countDown(); }
+            }, listener).build();
+        client.awaitReady(Duration.ofSeconds(5));
         assertTrue(readyDelivered.await(3, TimeUnit.SECONDS)); return client;
     }
     JsonNode opcode(int op) throws Exception {
