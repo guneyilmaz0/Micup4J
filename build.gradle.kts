@@ -1,6 +1,7 @@
 plugins {
     `java-library`
     `maven-publish`
+    kotlin("jvm") version "2.3.0"
 }
 
 group = "net.guneyilmaz0.micup4j"
@@ -71,3 +72,34 @@ tasks.register<JavaExec>("runExample") {
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
 }
 tasks.named("check") { dependsOn(tasks.named(example.classesTaskName)) }
+
+// Compile-only check that JDA-style Kotlin sources still compile against the public API.
+val compatibility = sourceSets.create("compatibility") {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+configurations[compatibility.implementationConfigurationName].extendsFrom(configurations.api.get())
+dependencies {
+    // The Kotlin stdlib is added only to the compatibility source set; main stays Kotlin-free.
+    "compatibilityImplementation"(kotlin("stdlib"))
+    "compatibilityImplementation"(kotlin("test-junit5"))
+}
+kotlin.sourceSets.named("compatibility") { kotlin.srcDir("src/compatibility/kotlin") }
+tasks.named("check") { dependsOn(tasks.named("compileCompatibilityKotlin")) }
+
+// Guards the published Java library: no Kotlin artifact may leak into main's classpaths (and thus the POM).
+tasks.register("verifyNoKotlinInMain") {
+    group = "verification"
+    description = "Fails if main's compile or runtime classpath contains an org.jetbrains.kotlin artifact"
+    val classpaths = listOf(configurations.compileClasspath, configurations.runtimeClasspath)
+    doLast {
+        val offenders = classpaths.flatMap { cfg ->
+            cfg.get().incoming.resolutionResult.allComponents
+                .mapNotNull { it.moduleVersion }
+                .filter { it.group.startsWith("org.jetbrains.kotlin") }
+                .map { "${cfg.name}: ${it.group}:${it.name}:${it.version}" }
+        }
+        check(offenders.isEmpty()) { "Kotlin leaked into main classpath: $offenders" }
+    }
+}
+tasks.named("check") { dependsOn(tasks.named("verifyNoKotlinInMain")) }
