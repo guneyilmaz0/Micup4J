@@ -5,6 +5,7 @@ import net.guneyilmaz0.micup4j.events.InteractionCreateEvent;
 import net.guneyilmaz0.micup4j.events.interaction.command.*;
 import net.guneyilmaz0.micup4j.hooks.ListenerAdapter;
 import net.guneyilmaz0.micup4j.internal.Json;
+import net.guneyilmaz0.micup4j.requests.RestAction;
 import net.guneyilmaz0.micup4j.interactions.commands.*;
 import net.guneyilmaz0.micup4j.interactions.commands.build.*;
 import org.junit.jupiter.api.Test;
@@ -141,5 +142,80 @@ class CommandAndMessageCompatibilityTest extends GatewayFixture {
         assertEquals("PATCH", request.getMethod()); assertFalse(body.has("content")); assertEquals(0, body.path("embeds").size());
         message().editMessage("Updated").setEmbeds(embed).submit().get(3, TimeUnit.SECONDS);
         assertEquals("Updated", Json.parse(route("/messages/3").getBody().readUtf8()).path("content").asText());
+    }
+    @Test void rawDataIsSharedButGetDataReturnsIndependentCopies() throws Exception {
+        start(new ListenerAdapter() {});
+        var event = new SlashCommandInteractionEvent(client, 2, command(2, """
+                {"type":3,"name":"query","value":"hello"}
+                """));
+        var copy = (com.fasterxml.jackson.databind.node.ObjectNode) event.getData();
+        copy.put("guild_id", "77");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) copy.path("data")).put("name", "mutated");
+        assertNotSame(copy, event.getData());
+        assertEquals("1", event.getGuildId()); assertEquals("admin", event.getName());
+        assertEquals("1", event.getData().path("guild_id").asText());
+        assertEquals("hello", event.getOption("query").getAsString());
+    }
+    @Test void optionsAreBuiltOnceAndSingleLookupsIgnoreUnrelatedMalformedOptions() throws Exception {
+        start(new ListenerAdapter() {});
+        var event = new SlashCommandInteractionEvent(client, 2, command(2, """
+                {"type":3,"name":"query","value":"hello"},{"type":4,"name":"limit","value":3}
+                """));
+        assertEquals("hello", event.getOption("query").getAsString());
+        assertEquals(3L, event.getOption("limit").getAsLong());
+        var options = event.getOptions();
+        assertSame(options, event.getOptions());
+        assertSame(options.get(1), event.getOption("limit"));
+        assertSame(event.getUser(), event.getUser());
+        var malformed = new SlashCommandInteractionEvent(client, 3, command(2, """
+                {"type":3,"name":"query","value":"ok"},{"type":3,"name":"broken","value":{"nested":true}}
+                """));
+        assertEquals("ok", malformed.getOption("query").getAsString());
+        assertThrows(IllegalArgumentException.class, malformed::getOptions);
+        assertThrows(IllegalArgumentException.class, () -> malformed.getOption("broken"));
+    }
+    @Test void interactionWithoutUsableTokenIsRejectedWithoutLeakingIt() throws Exception {
+        start(new ListenerAdapter() {});
+        for (String token : List.of("\"token\":\"\",", "\"token\":\" \",", "", "\"token\":{\"secret\":\"leak\"},")) {
+            var data = Json.parse("{\"id\":\"123\",\"application_id\":\"42\"," + token + "\"type\":2,\"data\":{\"name\":\"x\"}}");
+            var error = assertThrows(IllegalArgumentException.class, () -> new InteractionCreateEvent(client, 2, data));
+            assertEquals("Interaction payload has no token", error.getMessage());
+        }
+    }
+    @Test void replyRejectsNonCanonicalMessageIdAndNullEditClearsContent() throws Exception {
+        start(new ListenerAdapter() {});
+        var odd = Message.fromContext(client, Json.parse("""
+                {"id":"0003","channel_id":"2","content":"Hello","author":{"id":"5","username":"human"}}
+                """), "1");
+        assertThrows(IllegalArgumentException.class, () -> odd.reply("Hi"));
+        message().editMessage(null).submit().get(3, TimeUnit.SECONDS);
+        var request = route("/messages/3");
+        assertEquals("PATCH", request.getMethod());
+        assertEquals(Json.parse("{\"content\":\"\"}"), Json.parse(request.getBody().readUtf8()));
+    }
+    @Test void jdaShapedDeferredHookChainCompilesAndSendsEphemeralFollowup() throws Exception {
+        start(new ListenerAdapter() {});
+        var event = new SlashCommandInteractionEvent(client, 2, command(2, ""));
+        var embed = new EmbedBuilder().setTitle("Working").build();
+        var done = new CompletableFuture<Message>();
+        // Written exactly as a JDA bot would write it.
+        event.deferReply(true).queue(hook -> {
+            hook.sendMessage("Original").queue(original ->
+                    hook.sendMessage("Done").setEphemeral(true).addEmbeds(embed).queue(done::complete, done::completeExceptionally),
+                    done::completeExceptionally);
+        }, done::completeExceptionally);
+        done.get(3, TimeUnit.SECONDS);
+        route("/callback");
+        var original = route("/messages/@original");
+        assertEquals("PATCH", original.getMethod());
+        assertFalse(Json.parse(original.getBody().readUtf8()).has("flags"));
+        var followup = route("/webhooks/42/fixture-token");
+        var body = Json.parse(followup.getBody().readUtf8());
+        assertEquals("POST", followup.getMethod()); assertEquals(64, body.path("flags").asInt());
+        assertEquals("Working", body.path("embeds").get(0).path("title").asText());
+        RestAction<java.util.List<Message>> both = RestAction.allOf(event.getHook().sendMessage("a"), event.getHook().sendMessage("b"));
+        assertEquals(2, both.delay(java.time.Duration.ofMillis(10)).submit().get(3, TimeUnit.SECONDS).size());
+        assertEquals(2, event.getHook().sendMessage("c").zip(event.getHook().sendMessage("d"))
+                .onErrorMap(error -> java.util.List.of()).submit().get(3, TimeUnit.SECONDS).size());
     }
 }
