@@ -4,17 +4,24 @@
 
 | Field | Value |
 | --- | --- |
-| Version | `1.0.0-rc.1` |
-| Display name | Micup4J 1.0 RC 1 |
-| Suggested Git tag | `v1.0.0-rc.1` |
+| Version | `1.0.0-rc.2` |
+| Display name | Micup4J 1.0 RC 2 |
+| Suggested Git tag | `v1.0.0-rc.2` |
 | Release date | October 27, 2026 |
 | Java baseline | Java 21 |
-| Dependency | `com.swadedev.micup4j:Micup4J:1.0.0-rc.1` |
+| Dependency | `com.swadedev.micup4j:Micup4J:1.0.0-rc.2` |
 | Status | Release candidate; not yet published to Maven Central |
+
+## Upgrading from 1.0.0-rc.1
+
+Change the dependency to `com.swadedev.micup4j:Micup4J:1.0.0-rc.2`. There are no API changes.
+
+- The JVM now stays alive from `build()` until the session or shard manager shuts down or fails permanently, as with JDA. A `main` method can return right after `build()`; a blocking `awaitShutdown(...)` call is no longer needed to keep the bot running.
+- A process that previously exited on its own after its work, such as a one-off script, must now call `shutdown()` or `shutdownNow()` to exit.
 
 ## Upgrading from 0.5.0-beta
 
-Change the dependency to `com.swadedev.micup4j:Micup4J:1.0.0-rc.1` and recompile. There are no API removals, but the packages moved:
+Change the dependency to `com.swadedev.micup4j:Micup4J:1.0.0-rc.2` and recompile. There are no API removals, but the packages moved:
 
 - **Rename imports:** replace `net.guneyilmaz0.micup4j` with `com.swadedev.micup4j` everywhere, for example with `grep -rl 'net.guneyilmaz0.micup4j' src | xargs sed -i 's/net\.guneyilmaz0\.micup4j/com.swadedev.micup4j/g'`. Class names, methods and behavior are unchanged.
 - **Update the dependency:** the group is now `com.swadedev.micup4j`. For a composite build, the sibling checkout's `group` changes accordingly.
@@ -121,6 +128,8 @@ See [RELEASING.md](docs/RELEASING.md). In short: update the version, changelog a
 
 `gradle.properties` remains the artifact version source. Runtime metadata and the JAR manifest are generated from it.
 
+- [1.0 RC 2 release notes](docs/releases/README-1.0.0-rc.2.md)
+- [1.0 RC 1 release notes](docs/releases/README-1.0.0-rc.1.md)
 - [0.5 Beta release notes](docs/releases/README-0.5.0-beta.md)
 - [0.4 Alpha release notes](docs/releases/README-0.4.0-alpha.md)
 - [0.3 Alpha release notes](docs/releases/README-0.3.0-alpha.md)

@@ -11,7 +11,7 @@ Milestones describe intended scope, not guaranteed dates. Micup API availability
 | `0.3.0-alpha` | JDA-style bot API, entities, caches, and permissions | Implemented |
 | `0.4.0-alpha` | Commands, embeds, components, and uploads | Implemented |
 | `0.5.0-beta` | Multi-shard operation and performance qualification | Implemented |
-| `1.0.0` | Stable core API and documented compatibility | Release candidate (`1.0.0-rc.1`) |
+| `1.0.0` | Stable core API and documented compatibility | Release candidate (`1.0.0-rc.2`) |
 
 ## Source compatibility priority
 
@@ -115,7 +115,7 @@ Released as `0.5.0-beta`. Measurements use an in-process mock instance; see [per
 
 **Completion criteria:** documented core features pass integration and recovery tests; known limitations are explicit; published artifacts can be reproduced and consumed using the documented installation paths.
 
-`1.0.0-rc.1` completes the items above: the [compatibility policy and protocol matrix](docs/COMPATIBILITY.md), a locked API snapshot, complete Javadoc enforced by the build, and signed, reproducible release tooling ([releasing](docs/RELEASING.md)). Micup4J is licensed under the Apache License 2.0. The final `1.0.0` waits for the last two items, which need a real deployment.
+`1.0.0-rc.1` completes the items above: the [compatibility policy and protocol matrix](docs/COMPATIBILITY.md), a locked API snapshot, complete Javadoc enforced by the build, and signed, reproducible release tooling ([releasing](docs/RELEASING.md)). Micup4J is licensed under the Apache License 2.0. `1.0.0-rc.2` fixes the first defect found in real-bot use: the JVM exited when `main` returned after `build()`. The final `1.0.0` waits for the last two items, which need a real deployment.
 
 ## Exploratory work
 

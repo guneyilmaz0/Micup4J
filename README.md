@@ -4,15 +4,15 @@
 
 Micup4J provides a familiar builder, event listener, and REST action API inspired by [JDA](https://github.com/discord-jda/JDA), implemented for Micup's REST and Gateway protocols.
 
-**Release:** `1.0.0-rc.1` · **Java:** 21+ · **REST / Gateway:** v1
+**Release:** `1.0.0-rc.2` · **Java:** 21+ · **REST / Gateway:** v1
 
 > Release candidate: the 1.0 API is frozen and follows the [compatibility policy](docs/COMPATIBILITY.md). Micup4J does not yet provide JDA's full feature set or established performance characteristics.
 
 [Getting started](#getting-started) · [Supported features](#supported-features) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Upgrade guide](UPDATE.md)
 
-## What's new in 1.0 RC 1
+## What's new in 1.0 RC 2
 
-`1.0.0-rc.1` freezes the public API under a [compatibility policy](docs/COMPATIBILITY.md) with a protocol matrix, documents every supported type and member, and adds signed, reproducible release tooling. `0.5.0-beta` added a shard manager with controlled startup and shutdown, shared REST rate limits across sessions of one token, and a repeatable load harness with published results; see [sharding](docs/SHARDING.md) and [performance](docs/PERFORMANCE.md). `0.4.0-alpha` added buttons, select menus, action rows and modals with typed component and modal events, plus file uploads; see the [components guide](docs/COMPONENTS.md). `0.3.0-alpha` added typed guild/member/role/channel reads, bounded member pagination, configurable entity caches and permission calculations, moderation and role actions with audit log reasons, indexed member search and Gateway member requests. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/com/swadedev/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
+`1.0.0-rc.2` keeps the JVM alive from `build()` until shutdown, as JDA does, so a bot no longer exits when `main` returns. `1.0.0-rc.1` froze the public API under a [compatibility policy](docs/COMPATIBILITY.md) with a protocol matrix, documented every supported type and member, and added signed, reproducible release tooling. `0.5.0-beta` added a shard manager with controlled startup and shutdown, shared REST rate limits across sessions of one token, and a repeatable load harness with published results; see [sharding](docs/SHARDING.md) and [performance](docs/PERFORMANCE.md). `0.4.0-alpha` added buttons, select menus, action rows and modals with typed component and modal events, plus file uploads; see the [components guide](docs/COMPONENTS.md). `0.3.0-alpha` added typed guild/member/role/channel reads, bounded member pagination, configurable entity caches and permission calculations, moderation and role actions with audit log reasons, indexed member search and Gateway member requests. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/com/swadedev/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
 
 ## Supported features
 
@@ -59,9 +59,9 @@ From the repository directory:
 On Windows, use `gradlew.bat`. Build outputs are written to `build/libs/`:
 
 ```text
-Micup4J-1.0.0-rc.1.jar
-Micup4J-1.0.0-rc.1-sources.jar
-Micup4J-1.0.0-rc.1-javadoc.jar
+Micup4J-1.0.0-rc.2.jar
+Micup4J-1.0.0-rc.2-sources.jar
+Micup4J-1.0.0-rc.2-javadoc.jar
 ```
 
 The main JAR is a library JAR, not a standalone executable or a bundle of dependencies.
@@ -80,7 +80,7 @@ In your bot's `build.gradle.kts`:
 repositories { mavenCentral() }
 
 dependencies {
-    implementation("com.swadedev.micup4j:Micup4J:1.0.0-rc.1")
+    implementation("com.swadedev.micup4j:Micup4J:1.0.0-rc.2")
 }
 ```
 
