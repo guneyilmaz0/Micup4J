@@ -63,12 +63,16 @@ Diagnostics share the bounded listener executor and are best effort. They can be
 
 `GatewayCloseCode.fromCode(code)` exposes this policy. Stop is a conservative client decision for malformed protocol/authentication cases, even where the server may retain a session. A failed Resume that receives Invalid Session starts a fresh Identify on the current socket.
 
+## Presence (unreleased)
+
+Builder/runtime presence now uses Identify's initial presence and authenticated opcode 3. Updates coalesce to the latest desired state, are paced at least 4.1 seconds apart on one socket, and are restored after Ready/Resumed. Micup publishes custom status rather than Discord activities; see [presence mapping and limits](PRESENCE.md).
+
 ## Delivery and shutdown
 
 Events remain ordered within a session. Processed sequences advance after listener delivery completes. Replayed sequences already accepted by the client are suppressed within that session. This is not durable exactly-once delivery; Micup does not retain every event for replay.
 
 A full event queue causes a permanent client failure instead of silently acknowledging a dropped dispatch. Listener exceptions are isolated and reported without their potentially credential-bearing exception text. Shutdown aborts open or late-opening sockets, cancels retry timers, closes REST work, and completes pending lifecycle futures.
 
-The unreleased source checkout adds ordered entity-cache updates before listeners; see [entity state and invalidation](ENTITIES.md). Invalid permission-bearing entity payloads fail processing and are not acknowledged as successful delivery.
+The unreleased source checkout adds ordered entity-cache updates before listeners; see [entity state and invalidation](ENTITIES.md). Typed guild lifecycle callbacks run on that same event, after cache updates; identity classification is bounded separately from entity eviction. See the [lifecycle rules](JDA-COMPATIBILITY.md#guild-lifecycle-events). Invalid permission-bearing entity payloads fail processing and are not acknowledged as successful delivery.
 
 Reference: [Micup Gateway](https://micup.gg/docs/gateway/overview/), [close codes](https://micup.gg/docs/gateway/opcodes-and-close-codes/).

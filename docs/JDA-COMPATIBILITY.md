@@ -59,7 +59,10 @@ Micup has no Discord intents. Remove Discord intent configuration instead of exp
 | `deferReply().queue(hook -> ...)` / `getHook()` | Acknowledgement barrier, original response operations and basic followups |
 | Root `EmbedBuilder`, `Color`, common author/footer overloads, copies and clearing | Micup validation, with immutable built embeds |
 | Root `Permission`, `member.hasPermission`, `getPermissions` | JDA-style names mapped to Micup bits, using the existing resolver |
-| Member role color | Highest assigned nonzero role color, following Micup hierarchy ordering |
+| `getMentions().getUsers/getMembers/getRoles/getChannels` | Active payload mentions, text order, immutable lists and cache-only member/role/channel resolution |
+| `member.getColors().getPrimary()` | Highest assigned colored role, including Micup's optional static gradient color |
+| `onGuildReady/onGuildJoin/onGuildAvailable/onGuildUnavailable/onGuildLeave` | Ordered lifecycle classification with session identities tracked separately from cache eviction |
+| `setStatus/setActivity/setIdle`, `getPresence()` | Actual Identify/opcode 3 presence; common activity names render as Micup custom-status text |
 | `User.getAvatarUrl()` | Discovered Media Proxy URL for a custom avatar; null when absent |
 
 ### Reply and defer flows
@@ -89,6 +92,53 @@ Guild snapshots obtained through the client carry a client reference for command
 
 Member permission and role/color helpers require usable cached guild/role state. Use the explicit [permission resolver](ENTITIES.md#permission-masks) with freshly retrieved snapshots when the cache is incomplete. Timeouts, MFA and hierarchy remain separate server-side restrictions. `getGuilds` is still a bounded observed set and entities remain immutable snapshots, rather than JDA's live entity views.
 
+## Mentions and BMO-style avatar code
+
+The [BMO-style avatar example](../src/examples/java/net/guneyilmaz0/micup4j/examples/BmoStyleAvatar.java) compiles the familiar `message.getMentions().getMembers()` and `target.getColors().getPrimary()` pattern. The integration suite sends its resulting embed to a local HTTP fixture and verifies the selected user's avatar URL and role color. A [Kotlin source fixture](../src/compatibility/kotlin/JdaSourceCompatibilityTest.kt) checks the original `target.colors.primary` JavaBean property types and compiles the Kotlin mention/guild-ready/avatar flow in the sibling BMO integration project. The library's Java build compiles the Java examples; it does not run Kotlin compilation. To repeat the Kotlin check with a configured sibling BMO checkout:
+
+```bash
+cp src/compatibility/kotlin/JdaSourceCompatibilityTest.kt ../BMO-micup/src/test/kotlin/net/guneyilmaz0/bmo/
+(cd ../BMO-micup && ./gradlew test)
+```
+
+Mention membership comes from the message's active `mentions`, `mention_roles`, and `mention_channels` fields. Text orders those active IDs and removes duplicates; a raw `<@id>` with no active mention entry does not become a notifying user mention. The separate `users` array contains non-notifying references and is not treated as mentions. An implicit active user with no literal token is appended in payload order.
+
+`getUsers()` returns copied partial users from the message. `getMembers()`, `getRoles()` and `getChannels()` resolve only observed cache entries in that guild and skip misses. They never download a roster or invent missing role assignments/overwrites. `isMentioned(Role)` checks the active role ID even on a cache miss. Mention views capture the cache resolution at first access and remain immutable afterwards. A message from a private/group channel cannot supply guild members. Gateway `channel_type` now distinguishes private from group messages and identifies a guild's voice/text channel even when it is not cached.
+
+A Micup bot's initial member list is partial, so a mentioned user may not be a cached member. Explicit lookup is available:
+
+```java
+message.getMentions().retrieveMembers().queue(members -> {
+    // Complete memberships, in the same user-mention order.
+});
+```
+
+This lazy helper performs sequential typed HTTP reads for at most 100 active user mentions. It does not populate the Gateway cache, stops on the first error, and propagates cancellation to the active read without starting the next one. In a private channel it returns an empty list without HTTP. Role/color helpers still need complete observed guild roles.
+
+`RoleColors` preserves the primary color and nullable `color_secondary`, including a secondary value of black. It exposes primary/secondary getters and default/solid/gradient checks. No Discord tertiary or holographic style is synthesized. A user without a custom avatar still has a null avatar URL; the example handles that case explicitly.
+
+## Guild lifecycle events
+
+The same wire dispatch is enriched after cache updates and delivered once through the listener adapter. Existing generic listeners still see the original `GUILD_CREATE`/`GUILD_DELETE` type and sequence. New overrides use `events.guild` classes:
+
+| Observed transition | Typed callback |
+| --- | --- |
+| First available snapshot for an ID listed in the current Ready | `onGuildReady` |
+| Available snapshot for an ID not observed in this session | `onGuildJoin` |
+| Previously unavailable guild becomes available | `onGuildAvailable` |
+| Available guild becomes temporarily unavailable | `onGuildUnavailable` |
+| Permanent guild removal | `onGuildLeave` |
+
+`onGenericGuild` also receives these and guild metadata/sync updates. Duplicate available snapshots and `GUILD_SYNC` do not emit Ready or Join again. Resume retains classification. Fresh Ready clears the previous session's identities, allowing a new GuildReady event for each initial guild. An initially unavailable guild emits no false unavailable transition; its later recovery emits GuildAvailable. These classifications require receiving the relevant lifecycle events.
+
+Lifecycle identity storage is capped at Micup's 2,500 guilds per bot session, independently of entity-cache limits. Exceeding that bound fails event processing rather than evicting identity and emitting false joins. A small/disabled cache does not suppress typed guild events. With caching enabled the event holds the cache's bounded snapshot; light mode uses the incoming guild snapshot without storing its children. A leave event holds the pre-removal snapshot, so its name remains readable after the cache entry disappears.
+
+Global `awaitReady` and Ready still indicate authenticated session startup; they do not wait for Micup's subsequent guild burst. This differs from the timing many JDA bots assume. Use GuildReady for per-guild initialization, GuildAvailable for recovery, and register commands only when definitions change. These are observed protocol transitions, not proof that every member/channel in the guild is cached.
+
+## Presence and activities
+
+Builder and runtime presence setters now publish the real Micup presence payload. Common JDA activity factories render as custom-status text; they do not create Discord rich presence. See [presence mapping, saved state, pacing and reconnect rules](PRESENCE.md). An untouched builder preserves saved account state, and status-only updates preserve a saved custom status until an activity is explicitly set or cleared.
+
 ## Migration from the earlier Micup4J alpha
 
 - `getGuildById` and guild entity `get...ById` methods now return an object or null. Move Optional chains to the corresponding `find...ById` methods.
@@ -100,7 +150,7 @@ Member permission and role/color helpers require usable cached guild/role state.
 
 ## Remaining compatibility work
 
-Presence/activity configuration, member cache flag adapters, guild-ready and advanced entity events, mentions, nested commands/choices/autocomplete, component builders, fluent message creation/edit actions, uploads, complete webhook actions, user DMs and shard managers still need implementation. Discord-only capabilities will not be silently emulated where Micup has no equivalent.
+Streaming/rich-presence metadata, member cache flag adapters, advanced entity events and mention types, nested commands/choices/autocomplete, component builders, fluent message creation/edit actions, uploads, complete webhook actions, user DMs and shard managers still need implementation. Discord-only capabilities will not be silently emulated where Micup has no equivalent.
 
 There is no promise that replacing imports and the builder is sufficient for every existing bot. The compiled example and integration tests are the current coverage evidence. Extend compatibility with runnable source fixtures as more of the roadmap is implemented.
 
@@ -113,3 +163,6 @@ There is no promise that replacing imports and the builder is sufficient for eve
 - [JDA typed option mappings](https://docs.jda.wiki/net/dv8tion/jda/api/interactions/commands/OptionMapping.html)
 - [Micup interactions](https://micup.gg/docs/http-api/interactions/)
 - [Micup application commands](https://micup.gg/docs/http-api/application-commands/)
+- [Micup client commands](https://micup.gg/docs/gateway/commands/)
+- [Micup message mentions](https://micup.gg/docs/http-api/messages/)
+- [JDA guild readiness](https://docs.jda.wiki/net/dv8tion/jda/api/events/guild/GuildReadyEvent.html)

@@ -70,7 +70,7 @@ Cache changes run on the ordered event executor before that event's user listene
 
 Enabled caches require their state events. Building a cached client that ignores a required guild, role, channel, member or chunk event fails before connecting. Use `createLight` or disable the cache to intentionally ignore those events. Raw generic event delivery remains available in light mode.
 
-`rolesComplete` and `channelsComplete` describe collection coverage of the last observed snapshot, and become false on truncation or disabled storage. Channels are only the channels visible to this bot. Members are always a bounded observed subset. These flags do not guarantee freshness: event filters, subscriptions, connection loss and nonretained Gateway payloads can leave observed memberships stale. Member-list subscriptions and presence caches are not implemented. Retrieve current membership before sensitive decisions.
+`rolesComplete` and `channelsComplete` describe collection coverage of the last observed snapshot, and become false on truncation or disabled storage. Channels are only the channels visible to this bot. Members are always a bounded observed subset. These flags do not guarantee freshness: event filters, subscriptions, connection loss and nonretained Gateway payloads can leave observed memberships stale. Member-list subscriptions and caches of other users' presences are not implemented. The session's own [presence manager](PRESENCE.md) does not create a presence cache. Retrieve current membership before sensitive decisions.
 
 ## Permission masks
 

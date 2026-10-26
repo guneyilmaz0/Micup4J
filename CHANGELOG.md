@@ -18,6 +18,12 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - Typed option mappings, fluent `setEphemeral` callbacks returning `InteractionHook`, acknowledgement barriers and deferred original response handling.
 - Root `EmbedBuilder`/`Permission`, common entity getters, cached text-channel handles, unsigned ID overloads and custom avatar URL access.
 - A compiled JDA-style example and a [source compatibility guide](docs/JDA-COMPATIBILITY.md).
+- Active message mention views with cache-only typed resolution, explicit bounded member retrieval, and cancellation propagation.
+- Primary/secondary `RoleColors` and the BMO-style `member.getColors().getPrimary()` accessor.
+- Typed guild readiness, joining, temporary availability and leaving events, classified after cache updates with separately bounded session identities.
+- Builder/runtime presence controls, `OnlineStatus` and common `Activity` factories rendered as Micup custom-status text.
+- Coalesced presence scheduling, authentication gating and reconnect restoration; cancelled Gateway timers are removed immediately.
+- A compiled BMO-style avatar fixture, local embed verification, and lifecycle/presence/mention regression tests.
 
 ### Changed
 
@@ -28,6 +34,8 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - Reply/defer actions now complete with a typed hook instead of Void; direct `respond` retains its Void result.
 - No-argument `awaitReady()` now waits until Ready or failure without an implicit timeout. Use the duration overload for a bound.
 - Canonical channel types move to `entities.channel.ChannelType`; legacy constants remain a facade. Recompile alpha consumers.
+- Message channel handles now use Gateway `channel_type` when available, preserving group/private and uncached voice/text distinctions.
+- Gateway tests now separately await authentication and Ready delivery before injecting synthetic followup events, removing a startup-order race in the fixture.
 
 Version remains `0.2.0-alpha` until the next release is explicitly prepared. Indexed member search, wider mutation coverage and live-server fixture qualification remain open in the 0.3 roadmap.
 

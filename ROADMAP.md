@@ -23,7 +23,8 @@ The first supported source fixture is [JdaStyleBot](src/examples/java/net/guneyi
 - [x] Mutable `Commands.slash`, typed bulk command actions and guild command operations.
 - [x] Fluent ephemeral callbacks, typed options and acknowledgement-aware interaction hooks.
 - [x] Compile a representative JDA-style bot and verify the adapted flows against local protocol fixtures.
-- [ ] Expand source fixtures around the original BMO command classes, mentions, guild lifecycle and presence configuration.
+- [x] Add BMO-style cached-mention/avatar-color fixtures, typed guild lifecycle events, and basic presence configuration.
+- [ ] Extend fixtures to the full original BMO command manager, uncached member workflows and shard configuration.
 - [ ] Extend fluent message/webhook builders and advanced command definitions.
 - [ ] Add compatible shard-manager entry points once controlled multi-session operation is implemented.
 
@@ -57,6 +58,9 @@ This release also brings forward basic value-option definitions and rich embed b
 
 - [x] Add immutable guild, member, role, and typed guild-channel models.
 - [x] Add typed guild/member/role/channel reads and basic guild names, member nicknames, role creation/renaming, and role assignment.
+- [x] Add ordered guild ready/join/availability/leave callbacks with bounded session identity tracking.
+- [x] Expose basic message mentions and primary/gradient role colors without implicit HTTP.
+- [x] Add coalesced status/activity setters using Micup custom status and opcode 3.
 - [ ] Expand mutation coverage, audit reasons, and feature-gated permission writes.
 - [x] Add bounded configurable cache policies with separate light/default presets.
 - [x] Apply guild snapshots, syncs, incremental/bulk updates, deletions, and unavailable-state invalidation before listeners.
