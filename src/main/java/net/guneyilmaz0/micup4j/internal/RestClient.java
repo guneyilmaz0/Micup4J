@@ -21,7 +21,7 @@ public final class RestClient implements AutoCloseable {
     private final RestConfig config;
     private final Object lock = new Object();
     private final ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1,
-            Thread.ofPlatform().daemon().name("micup4j-rest-scheduler").factory());
+            ThreadGuards.guarded(Thread.ofPlatform().daemon().name("micup4j-rest-scheduler").factory()));
     private final ExecutorService completions = Executors.newVirtualThreadPerTaskExecutor();
     private final List<Job> waiting = new ArrayList<>();
     private final Set<Job> jobs = new HashSet<>();
@@ -32,6 +32,17 @@ public final class RestClient implements AutoCloseable {
     private int normalCount, callbackCount, inFlight, normalInFlight;
     private long submitted, completed, failed, cancelled, retries, latencyCount, latencyNanos, lastLatency;
     private volatile boolean closed;
+    /** Set by {@link #shutdown(Duration)}: new work is refused while admitted work keeps running. Guarded by lock. */
+    private volatile boolean draining;
+    /** Completes once no admitted job remains after a drain, or when the client is closed. */
+    private final CompletableFuture<Void> drained = new CompletableFuture<>();
+    private ScheduledFuture<?> drainDeadline;
+    /**
+     * Completions announced by {@link #finishLocked} whose result future has not been completed yet. Guarded by lock.
+     * A drain ends only when both {@link #jobs} is empty and this is zero, so the last callback always runs on a
+     * completion thread before {@link #drained} completes and before {@link #completions} is shut down.
+     */
+    private int pendingCompletions;
     private volatile String base;
 
     private static final class Bucket {
@@ -66,14 +77,49 @@ public final class RestClient implements AutoCloseable {
             route = keys[0]; major = keys[1];
         }
     }
+    /**
+     * Creates a client with the {@linkplain RestConfig#defaults() default policy}.
+     *
+     * @param http     the HTTP client used for every request
+     * @param token    the bot token; sent only in the {@code Authorization} header
+     * @param capacity the maximum number of queued requests, at least 1
+     * @throws NullPointerException if {@code http} or {@code token} is {@code null}
+     * @throws IllegalArgumentException if {@code capacity} is less than 1
+     */
     public RestClient(HttpClient http, String token, int capacity) { this(http, token, capacity, RestConfig.defaults()); }
+    /**
+     * Creates a client.
+     *
+     * @param http     the HTTP client used for every request
+     * @param token    the bot token; sent only in the {@code Authorization} header
+     * @param capacity the maximum number of queued requests, at least 1
+     * @param config   the request policy
+     * @throws NullPointerException if an argument is {@code null}
+     * @throws IllegalArgumentException if {@code capacity} is less than 1
+     */
     public RestClient(HttpClient http, String token, int capacity, RestConfig config) {
         if (capacity < 1) throw new IllegalArgumentException("REST queue capacity must be positive");
         this.http = Objects.requireNonNull(http); this.token = Objects.requireNonNull(token);
         this.capacity = capacity; this.config = Objects.requireNonNull(config);
         scheduler.setRemoveOnCancelPolicy(true);
     }
+    /**
+     * Sets the API base discovered from the instance. Requests queued before this is set fail with an
+     * {@link IllegalStateException}.
+     *
+     * @param base the {@code api_public} endpoint; see {@link #requireEndpoint(URI, boolean)}
+     * @throws IllegalArgumentException if the endpoint is not acceptable
+     */
     public void setBase(URI base) { requireEndpoint(base, false); this.base = base.toString().replaceAll("/+$", ""); }
+    /**
+     * Validates an instance endpoint: TLS is required, and plain HTTP or WS is allowed only on loopback hosts. Credentials,
+     * a query and a fragment are rejected.
+     *
+     * @param uri       the endpoint
+     * @param websocket {@code true} to require {@code wss} (or {@code ws} on loopback), {@code false} for {@code https}
+     * @throws NullPointerException if {@code uri} is {@code null}
+     * @throws IllegalArgumentException if the endpoint is not acceptable
+     */
     public static void requireEndpoint(URI uri, boolean websocket) {
         Objects.requireNonNull(uri);
         boolean secure = (websocket ? "wss" : "https").equals(uri.getScheme());
@@ -82,7 +128,31 @@ public final class RestClient implements AutoCloseable {
         if ((!secure && !localPlain) || uri.getHost() == null || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null)
             throw new IllegalArgumentException("Endpoint must use TLS (plain HTTP/WS allowed only on loopback), without credentials, query or fragment");
     }
+    /**
+     * Creates an authenticated request. Nothing is sent until the action is executed.
+     *
+     * @param method the HTTP method
+     * @param path   the route below {@code /v1}, starting with a single slash
+     * @param body   the JSON body, or {@code null}
+     * @return the lazy request; it completes with the parsed JSON response, or fails with
+     *         {@link net.guneyilmaz0.micup4j.requests.ApiException} for a non-2xx status
+     * @throws IllegalArgumentException if the method or path is invalid
+     */
     public RestAction<JsonNode> request(String method, String path, JsonNode body) { return request(method, path, body, true); }
+    /**
+     * Creates a request. Nothing is sent until the action is executed.
+     *
+     * <p>When executed, the action fails with a {@link java.util.concurrent.RejectedExecutionException} if the queue is full
+     * or the client is shutting down, and with an {@link IllegalStateException} if discovery has not completed or the client
+     * is closed. Cancelling the future cancels the request, including an exchange already in flight.
+     *
+     * @param method the HTTP method
+     * @param path   the route below {@code /v1}, starting with a single slash
+     * @param body   the JSON body, or {@code null}
+     * @param auth   whether to send the bot {@code Authorization} header; {@code false} for token-in-path routes
+     * @return the lazy request
+     * @throws IllegalArgumentException if the method or path is invalid
+     */
     public RestAction<JsonNode> request(String method, String path, JsonNode body, boolean auth) {
         return action(method, path, body, auth, false, Long.MAX_VALUE);
     }
@@ -102,6 +172,7 @@ public final class RestClient implements AutoCloseable {
     private CompletableFuture<JsonNode> enqueue(String method, String path, String payload, boolean auth, boolean priority, long deadline) {
         Job job;
         synchronized (lock) {
+            if (draining) return CompletableFuture.failedFuture(new RejectedExecutionException("Client is shutting down"));
             if (closed) return CompletableFuture.failedFuture(new IllegalStateException("Client is closed"));
             if (base == null) return CompletableFuture.failedFuture(new IllegalStateException("Discovery has not completed"));
             if (priority ? callbackCount >= config.callbackCapacity() : normalCount >= capacity)
@@ -135,6 +206,7 @@ public final class RestClient implements AutoCloseable {
             long next = Long.MAX_VALUE;
             for (Job job : waiting) {
                 if (job.done || job.deadline <= now) continue; // Per-job expiry timer owns completion.
+                // Keep one concurrency slot free so an initial interaction callback never waits behind ordinary requests.
                 if (!job.priority && normalInFlight >= Math.max(1, config.maxConcurrency() - 1)) continue;
                 Bucket bucket = routes.get(job.route);
                 if (bucket == null) {
@@ -151,6 +223,7 @@ public final class RestClient implements AutoCloseable {
             if (selected != null) {
                 waiting.remove(selected); selected.running = true; selected.bucket.busy++;
                 inFlight++; if (!selected.priority) normalInFlight++;
+                // Space request starts by 20 ms so a burst cannot trip the global rate limit before any response headers are seen.
                 nextGlobal = now + 20_000_000L;
                 selected.started = now; selected.attempts++;
                 schedule(20_000_000L);
@@ -205,6 +278,7 @@ public final class RestClient implements AutoCloseable {
                         bucket.next = Math.max(bucket.next, now + delay);
                         if (data.path("global").asBoolean() || response.headers().firstValue("X-RateLimit-Global").orElse("").equals("true"))
                             globalBlockedUntil = Math.max(globalBlockedUntil, now + delay);
+                        // Only HTTP 429 is retried; the job re-enters the queue and waits for the bucket (or global) delay instead of sleeping here.
                         if (job.attempts <= config.maxRetries()) {
                             releaseFlight(job); waiting.add(job); retries++; schedule(0); return;
                         }
@@ -251,11 +325,27 @@ public final class RestClient implements AutoCloseable {
         if (job.priority) callbackCount--; else normalCount--;
         if (job.expiry != null) job.expiry.cancel(false);
         if (cancellation) cancelled++; else if (success) completed++; else failed++;
+        // Every non-cancelling finish is followed by complete(job, ...) outside lock. Counting it here, under the same lock
+        // that empties jobs, means no drain can end (and shut down completions) in the gap before that completion is submitted.
+        if (!cancellation) pendingCompletions++;
         return true;
     }
+    /** Whether a drain may end now: no admitted job and no announced completion remain. Caller holds lock. */
+    private boolean drainReadyLocked() { return draining && !closed && jobs.isEmpty() && pendingCompletions == 0; }
+    /** Must follow a successful non-cancelling {@link #finishLocked} call, outside lock. */
     private void complete(Job job, JsonNode value, Throwable error) {
-        Runnable completion = () -> { if (error == null) job.result.complete(value); else job.result.completeExceptionally(error); };
+        Runnable completion = () -> {
+            try { if (error == null) job.result.complete(value); else job.result.completeExceptionally(error); }
+            finally { completionDone(); }
+        };
+        // Rejection only happens after a hard close(); a drain never shuts completions down while a completion is pending.
         try { completions.execute(completion); } catch (RejectedExecutionException closed) { completion.run(); }
+    }
+    /** Runs on the completion thread after the job's callbacks; the last one of a drain ends it from here. */
+    private void completionDone() {
+        boolean ready;
+        synchronized (lock) { pendingCompletions--; ready = drainReadyLocked(); }
+        if (ready) finishDrain();
     }
     private void failed(Job job, Throwable error) {
         synchronized (lock) { if (!finishLocked(job, false, false)) return; schedule(0); }
@@ -273,13 +363,24 @@ public final class RestClient implements AutoCloseable {
     }
     private void cancel(Job job) {
         CompletableFuture<?> flight;
+        boolean ready;
         synchronized (lock) {
             flight = job.flight;
             if (!finishLocked(job, false, true)) return;
             schedule(0);
+            ready = drainReadyLocked();
         }
         if (flight != null) flight.cancel(true);
+        // A cancelled job has no completion to wait for; end the drain off the cancelling thread.
+        if (ready) {
+            try { completions.execute(this::finishDrain); } catch (RejectedExecutionException closed) { finishDrain(); }
+        }
     }
+    /**
+     * Returns a point-in-time snapshot of the queue and rate-limit counters.
+     *
+     * @return the metrics
+     */
     public RestMetrics getMetrics() {
         synchronized (lock) {
             return new RestMetrics(waiting.size(), inFlight, capacity, config.callbackCapacity(), submitted, completed, failed,
@@ -301,6 +402,7 @@ public final class RestClient implements AutoCloseable {
         StringBuilder major = new StringBuilder(auth ? "bot" : "anonymous");
         for (int i = 1; i < segments.length; i++) {
             String segment = segments[i];
+            // Token path segments are keyed by digest, so rate-limit state never retains or exposes a raw interaction token.
             boolean secret = i >= 3 && (segments[1].equals("webhooks") || segments[1].equals("interactions")) && i == 3;
             if (secret) { template.append("/:token"); major.append('/').append(digest(segment)); continue; }
             if (segment.matches("[0-9]+")) {
@@ -315,12 +417,59 @@ public final class RestClient implements AutoCloseable {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
         catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException("SHA-256 is unavailable"); }
     }
+    /**
+     * Starts a graceful drain: new requests are refused with {@link RejectedExecutionException}, while waiting and
+     * in-flight requests, including HTTP 429 retries, continue until done. Whatever remains when
+     * {@code drainTimeout} elapses is cancelled through {@link #close()}. Idempotent and non-blocking.
+     *
+     * @param drainTimeout the maximum drain duration
+     * @return a future that completes once the drain ends or the client is closed; it never completes exceptionally
+     */
+    public CompletableFuture<Void> shutdown(Duration drainTimeout) {
+        RestConfig.positive(drainTimeout);
+        boolean idle;
+        synchronized (lock) {
+            if (closed || draining) return drained.copy();
+            draining = true;
+            idle = drainReadyLocked();
+            if (!idle) drainDeadline = scheduler.schedule(this::close, drainTimeout.toNanos(), TimeUnit.NANOSECONDS);
+        }
+        if (idle) finishDrain();
+        return drained.copy();
+    }
+
+    /**
+     * Returns whether a drain was started or the client was closed. New requests are refused in both cases.
+     *
+     * @return {@code true} after {@link #shutdown(Duration)} or {@link #close()}
+     */
+    public boolean isShutdown() { return draining || closed; }
+
+    /**
+     * Ends a drain whose admitted jobs have all finished and whose completions have all run. Never runs under lock.
+     * Idempotent: only the first caller that observes the drain as ready ends it.
+     */
+    private void finishDrain() {
+        synchronized (lock) {
+            if (!drainReadyLocked()) return;
+            closed = true;
+            if (wake != null) wake.cancel(false);
+            if (drainDeadline != null) drainDeadline.cancel(false);
+            routes.clear(); buckets.clear(); scheduler.shutdown();
+        }
+        completions.shutdown();
+        drained.complete(null);
+    }
+
+    /** Hard close: cancels every waiting and in-flight request, and ends a running drain immediately. */
     @Override public void close() {
         List<Job> cancelledJobs;
         List<CompletableFuture<?>> flights = new ArrayList<>();
         synchronized (lock) {
+            // closed is set before the jobs are finished: finishLocked must not start a second drain completion.
             if (closed) return; closed = true;
             if (wake != null) wake.cancel(false);
+            if (drainDeadline != null) drainDeadline.cancel(false);
             cancelledJobs = new ArrayList<>(jobs);
             for (Job job : cancelledJobs) { if (job.flight != null) flights.add(job.flight); finishLocked(job, false, false); }
             routes.clear(); buckets.clear(); scheduler.shutdownNow();
@@ -328,5 +477,6 @@ public final class RestClient implements AutoCloseable {
         flights.forEach(flight -> flight.cancel(true));
         for (Job job : cancelledJobs) complete(job, null, new IllegalStateException("Client closed"));
         completions.shutdown();
+        drained.complete(null);
     }
 }

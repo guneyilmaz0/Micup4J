@@ -201,4 +201,98 @@ class RestClientTest {
         assertEquals(1, rest.getMetrics().retries());
     }
 
+
+    @Test void shutdownRejectsNewWorkAndDrainsInFlightRequest() throws Exception {
+        server.enqueue(json("{\"id\":\"1\"}").setHeadersDelay(300, TimeUnit.MILLISECONDS));
+        var inFlight = rest.request("GET", "/users/1", null).submit();
+        assertNotNull(server.takeRequest(2, TimeUnit.SECONDS));
+        var drained = rest.shutdown(Duration.ofSeconds(5));
+        assertTrue(rest.isShutdown());
+        var rejected = assertThrows(ExecutionException.class, () -> rest.request("GET", "/users/2", null).submit().get(1, TimeUnit.SECONDS));
+        assertInstanceOf(RejectedExecutionException.class, rejected.getCause());
+        assertEquals("Client is shutting down", rejected.getCause().getMessage());
+        assertFalse(drained.isDone());
+        assertEquals("1", inFlight.get(3, TimeUnit.SECONDS).path("id").asText());
+        assertNull(drained.get(3, TimeUnit.SECONDS));
+        // Still refused as "shutting down" after the drain finished, matching JDA's stopped requester.
+        var late = assertThrows(ExecutionException.class, () -> rest.request("GET", "/users/3", null).submit().get(1, TimeUnit.SECONDS));
+        assertInstanceOf(RejectedExecutionException.class, late.getCause());
+        assertEquals(1, server.getRequestCount());
+    }
+    @Test void shutdownDrainsQueuedRateLimitRetry() throws Exception {
+        server.enqueue(json("{\"code\":\"RATE_LIMITED\",\"retry_after\":0.2,\"global\":false}").setResponseCode(429));
+        server.enqueue(json("{\"ok\":true}"));
+        var pending = rest.request("GET", "/users/1", null).submit();
+        assertNotNull(server.takeRequest(2, TimeUnit.SECONDS));
+        var drained = rest.shutdown(Duration.ofSeconds(5));
+        assertTrue(pending.get(3, TimeUnit.SECONDS).path("ok").asBoolean());
+        assertNull(drained.get(3, TimeUnit.SECONDS));
+        assertEquals(2, server.getRequestCount());
+        assertEquals(1, rest.getMetrics().retries());
+    }
+    @Test void idleShutdownCompletesAtOnceAndIsIdempotent() throws Exception {
+        var first = rest.shutdown(Duration.ofSeconds(5));
+        assertNull(first.get(1, TimeUnit.SECONDS));
+        assertTrue(rest.shutdown(Duration.ofSeconds(5)).isDone());
+        rest.close();
+        rest.close();
+        assertTrue(rest.isShutdown());
+        assertThrows(IllegalArgumentException.class, () -> rest.shutdown(Duration.ZERO));
+    }
+    @Test void shutdownTimeoutCancelsRemainingWork() throws Exception {
+        server.enqueue(json("{}").setHeadersDelay(5, TimeUnit.SECONDS));
+        var stuck = rest.request("GET", "/users/1", null).submit();
+        assertNotNull(server.takeRequest(2, TimeUnit.SECONDS));
+        long started = System.nanoTime();
+        var drained = rest.shutdown(Duration.ofMillis(200));
+        assertNull(drained.get(3, TimeUnit.SECONDS));
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) >= 150);
+        assertThrows(ExecutionException.class, () -> stuck.get(2, TimeUnit.SECONDS));
+    }
+    @Test void closeEscalatesRunningDrain() throws Exception {
+        server.enqueue(json("{}").setHeadersDelay(5, TimeUnit.SECONDS));
+        var stuck = rest.request("GET", "/users/1", null).submit();
+        assertNotNull(server.takeRequest(2, TimeUnit.SECONDS));
+        var drained = rest.shutdown(Duration.ofSeconds(30));
+        assertFalse(drained.isDone());
+        rest.close();
+        assertTrue(drained.isDone());
+        assertThrows(ExecutionException.class, () -> stuck.get(2, TimeUnit.SECONDS));
+    }
+    @Test void drainEndsOnlyAfterLastExpiredJobCallbackRanOffScheduler() throws Exception {
+        server.enqueue(json("{}").setHeadersDelay(5, TimeUnit.SECONDS));
+        var callbackThread = new CompletableFuture<String>();
+        var callbackFinished = new java.util.concurrent.atomic.AtomicBoolean();
+        var pending = rest.requestCallback("/interactions/1/tok/callback", Json.object(), System.nanoTime() + 300_000_000L).submit();
+        pending.whenComplete((value, error) -> {
+            callbackThread.complete(Thread.currentThread().getName());
+            try { Thread.sleep(150); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            callbackFinished.set(true);
+        });
+        assertNotNull(server.takeRequest(2, TimeUnit.SECONDS));
+        // The drain starts before the job's deadline, so the expiry on the REST scheduler finishes the last drained job.
+        var drained = rest.shutdown(Duration.ofSeconds(10));
+        var sawCallbackFinished = drained.thenApply(ignored -> callbackFinished.get());
+        assertTrue(sawCallbackFinished.get(5, TimeUnit.SECONDS), "drain completed before the last callback ran");
+        assertNotEquals("micup4j-rest-scheduler", callbackThread.get(1, TimeUnit.SECONDS));
+        var error = assertThrows(ExecutionException.class, () -> pending.get(1, TimeUnit.SECONDS));
+        assertInstanceOf(TimeoutException.class, error.getCause());
+    }
+    @Test void restConfigKeepsSixArgumentConstructor() {
+        var legacy = new RestConfig(Duration.ofSeconds(20), Duration.ofMinutes(2), 5, 8, 4096, 8);
+        assertEquals(RestConfig.DEFAULT_SHUTDOWN_TIMEOUT, legacy.shutdownTimeout());
+        assertEquals(Duration.ofSeconds(30), RestConfig.defaults().shutdownTimeout());
+        assertEquals(Duration.ofSeconds(3), legacy.withShutdownTimeout(Duration.ofSeconds(3)).shutdownTimeout());
+        assertThrows(IllegalArgumentException.class, () -> legacy.withShutdownTimeout(Duration.ofSeconds(-1)));
+    }
+
+    @Test void delayedQueueFiringAfterShutdownFailsWithShuttingDownAndSendsNothing() throws Exception {
+        var failure = new CompletableFuture<Throwable>();
+        rest.request("GET", "/users/1", null).queueAfter(300, TimeUnit.MILLISECONDS, ok -> failure.completeExceptionally(new AssertionError("must not succeed")), failure::complete);
+        assertNull(rest.shutdown(Duration.ofSeconds(5)).get(2, TimeUnit.SECONDS));
+        var error = failure.get(5, TimeUnit.SECONDS);
+        assertInstanceOf(RejectedExecutionException.class, error);
+        assertEquals("Client is shutting down", error.getMessage());
+        assertEquals(0, server.getRequestCount());
+    }
 }

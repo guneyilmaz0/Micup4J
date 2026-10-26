@@ -27,7 +27,8 @@ public final class GatewayClient implements AutoCloseable {
     private final int shardId, shardCount;
     private final ScheduledThreadPoolExecutor state = stateExecutor();
     private static ScheduledThreadPoolExecutor stateExecutor() {
-        var executor = new ScheduledThreadPoolExecutor(1, Thread.ofPlatform().daemon().name("micup4j-gateway").factory());
+        var executor = new ScheduledThreadPoolExecutor(1,
+                ThreadGuards.guarded(Thread.ofPlatform().daemon().name("micup4j-gateway").factory()));
         executor.setRemoveOnCancelPolicy(true);
         executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         return executor;
@@ -49,6 +50,19 @@ public final class GatewayClient implements AutoCloseable {
     private long nextPresenceAt;
     private Presence.State lastPresence;
 
+    /**
+     * Creates a Gateway client; call {@link #start()} to connect.
+     *
+     * @param client     the owning session
+     * @param http       the HTTP client that opens the WebSocket
+     * @param endpoint   the discovered Gateway endpoint
+     * @param token      the bot token; sent only in the identify payload
+     * @param ignored    event types the session does not want to receive
+     * @param shardId    the zero-based shard id
+     * @param shardCount the total number of shards
+     * @param config     the Gateway policy
+     * @throws IllegalArgumentException if the endpoint is not acceptable, see {@link RestClient#requireEndpoint(URI, boolean)}
+     */
     public GatewayClient(Micup client, HttpClient http, URI endpoint, String token, List<String> ignored, int shardId, int shardCount, GatewayConfig config) {
         RestClient.requireEndpoint(endpoint, true);
         this.client = client;
@@ -61,6 +75,10 @@ public final class GatewayClient implements AutoCloseable {
         this.shardCount = shardCount;
     }
 
+    /**
+     * Signals that the desired presence changed. Signals coalesce into one pending flush on the Gateway scheduler, and the
+     * latest desired state is read when it runs, so this never queues an unbounded number of Gateway commands. Non-blocking.
+     */
     public void updatePresence() {
         if (closed || !presenceSignalQueued.compareAndSet(false, true)) return;
         execute(() -> { presenceSignalQueued.set(false); flushPresence(); });
@@ -78,6 +96,7 @@ public final class GatewayClient implements AutoCloseable {
         long id = generation, epoch = sessionEpoch;
         presenceInFlight = true;
         lastPresence = desired;
+        // Space presence updates by 4.1 s; changes made in between collapse into the latest desired state.
         nextPresenceAt = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(4100);
         send(3, desired.toJson());
         sends.whenComplete((ignored, failure) -> execute(() -> {
@@ -87,12 +106,23 @@ public final class GatewayClient implements AutoCloseable {
         }));
     }
 
+    /** Starts connecting on the Gateway scheduler. Non-blocking; progress is reported through status changes. */
     public void start() {
         execute(this::connect);
     }
 
+    /**
+     * Returns how many reconnect attempts were scheduled.
+     *
+     * @return the reconnect count
+     */
     public long getReconnectCount() { return reconnectCount; }
 
+    /**
+     * Returns the latest heartbeat round-trip time.
+     *
+     * @return the ping in milliseconds, or {@code -1} before the first acknowledgement
+     */
     public long getPing() {
         return ping;
     }
@@ -308,6 +338,10 @@ public final class GatewayClient implements AutoCloseable {
         close();
     }
 
+    /**
+     * Closes the connection and stops the Gateway scheduler. Idempotent and non-blocking; pending work on the scheduler is
+     * discarded and the socket is aborted rather than closed gracefully.
+     */
     @Override
     public void close() {
         closed = true;
