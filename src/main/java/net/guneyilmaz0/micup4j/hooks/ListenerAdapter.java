@@ -56,6 +56,17 @@ public abstract class ListenerAdapter implements EventListener {
             onInteractionCreate(autocomplete);
             onCommandAutoCompleteInteraction(autocomplete);
         }
+        else if (event instanceof net.guneyilmaz0.micup4j.events.interaction.component.GenericComponentInteractionCreateEvent component) {
+            onInteractionCreate(component);
+            onGenericComponentInteractionCreate(component);
+            if (component instanceof net.guneyilmaz0.micup4j.events.interaction.component.ButtonInteractionEvent button) onButtonInteraction(button);
+            else if (component instanceof net.guneyilmaz0.micup4j.events.interaction.component.StringSelectInteractionEvent select) onStringSelectInteraction(select);
+            else if (component instanceof net.guneyilmaz0.micup4j.events.interaction.component.EntitySelectInteractionEvent select) onEntitySelectInteraction(select);
+        }
+        else if (event instanceof net.guneyilmaz0.micup4j.events.interaction.ModalInteractionEvent modal) {
+            onInteractionCreate(modal);
+            onModalInteraction(modal);
+        }
         else if (event instanceof InteractionCreateEvent interaction) onInteractionCreate(interaction);
         else if (event instanceof net.guneyilmaz0.micup4j.events.guild.GenericGuildEvent guild) {
             onGenericGuild(guild);
@@ -85,6 +96,41 @@ public abstract class ListenerAdapter implements EventListener {
      * @param event the message event
      */
     public void onMessageReceived(net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent event) { onMessageReceived((MessageReceivedEvent) event); }
+    /**
+     * Called for every button click and select menu choice, before the specific callback.
+     *
+     * @param event the component interaction
+     */
+    public void onGenericComponentInteractionCreate(net.guneyilmaz0.micup4j.events.interaction.component.GenericComponentInteractionCreateEvent event) {}
+
+    /**
+     * Called when a button on a bot message is clicked.
+     *
+     * @param event the click
+     */
+    public void onButtonInteraction(net.guneyilmaz0.micup4j.events.interaction.component.ButtonInteractionEvent event) {}
+
+    /**
+     * Called when a string select menu choice is made.
+     *
+     * @param event the choice
+     */
+    public void onStringSelectInteraction(net.guneyilmaz0.micup4j.events.interaction.component.StringSelectInteractionEvent event) {}
+
+    /**
+     * Called when a user, role, mentionable or channel select choice is made.
+     *
+     * @param event the choice
+     */
+    public void onEntitySelectInteraction(net.guneyilmaz0.micup4j.events.interaction.component.EntitySelectInteractionEvent event) {}
+
+    /**
+     * Called when a modal the bot opened is submitted.
+     *
+     * @param event the submission
+     */
+    public void onModalInteraction(net.guneyilmaz0.micup4j.events.interaction.ModalInteractionEvent event) {}
+
     /**
      * Called when a slash command was invoked. {@link #onInteractionCreate} runs first. Answer within 2.5 seconds, for example with {@code event.reply(...)} or {@code event.deferReply()}.
      *

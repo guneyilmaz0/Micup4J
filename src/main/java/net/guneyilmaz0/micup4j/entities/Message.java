@@ -170,6 +170,19 @@ public final class Message implements ISnowflake {
     }
 
     /**
+     * Replies to this message with files.
+     *
+     * @param files 1-10 files
+     * @return an action that sends the reply when queued
+     * @throws IllegalArgumentException if no file is given or an id is not a canonical snowflake
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction replyFiles(net.guneyilmaz0.micup4j.utils.FileUpload... files) {
+        if (files.length == 0) throw new IllegalArgumentException("At least one file is required");
+        return new net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction(client, "/channels/" + Json.id(channelId) + "/messages", guildId,
+                Json.object().set("message_reference", Json.object().put("message_id", Json.id(id)))).setFiles(files);
+    }
+
+    /**
      * Replies to this message with embeds.
      *
      * @param embeds the embeds to send

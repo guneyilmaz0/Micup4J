@@ -82,6 +82,37 @@ public final class MessageBody {
     }
 
     /**
+     * Replaces the message components. An empty collection removes every component; Micup keeps stored components
+     * when an edit omits the field entirely.
+     *
+     * @param rows the action rows, at most five, message components only, unique custom ids
+     * @throws IllegalArgumentException if the rows are invalid for a message
+     */
+    public synchronized void setComponents(final Collection<? extends net.guneyilmaz0.micup4j.interactions.components.LayoutComponent> rows) {
+        Objects.requireNonNull(rows, "components");
+        mutable();
+        body.set("components", net.guneyilmaz0.micup4j.interactions.components.ActionRow.toMessageJson(rows));
+    }
+
+    /**
+     * Appends message components to the current ones.
+     *
+     * @param rows the action rows to add
+     * @throws IllegalArgumentException if the result would be invalid for a message
+     */
+    public synchronized void addComponents(final Collection<? extends net.guneyilmaz0.micup4j.interactions.components.LayoutComponent> rows) {
+        Objects.requireNonNull(rows, "components");
+        mutable();
+        var combined = new java.util.ArrayList<net.guneyilmaz0.micup4j.interactions.components.LayoutComponent>();
+        for (var row : body.path("components")) {
+            var parsed = net.guneyilmaz0.micup4j.interactions.components.ActionRow.fromJson(row);
+            if (parsed != null) combined.add(parsed);
+        }
+        combined.addAll(rows);
+        body.set("components", net.guneyilmaz0.micup4j.interactions.components.ActionRow.toMessageJson(combined));
+    }
+
+    /**
      * Sets or clears a bit of the {@code flags} field, creating the field when absent.
      *
      * @param bit the flag bit

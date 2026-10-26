@@ -50,6 +50,27 @@ public class MessageChannel implements net.guneyilmaz0.micup4j.entities.channel.
                 "/channels/" + id + "/messages", guildId, net.guneyilmaz0.micup4j.internal.MessagePayload.embeds(embeds));
     }
 
+    /**
+     * Sends files as a new message.
+     *
+     * @param files 1-10 files
+     * @return the action; add content, embeds or components before queueing
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendFiles(net.guneyilmaz0.micup4j.utils.FileUpload... files) {
+        return sendFiles(java.util.Arrays.asList(files));
+    }
+
+    /**
+     * Sends files as a new message.
+     *
+     * @param files 1-10 files
+     * @return the action
+     */
+    public net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendFiles(java.util.Collection<? extends net.guneyilmaz0.micup4j.utils.FileUpload> files) {
+        if (files.isEmpty()) throw new IllegalArgumentException("At least one file is required");
+        return new net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction(client, "/channels/" + id + "/messages", guildId, Json.object()).setFiles(files);
+    }
+
     public RestAction<Message> retrieveMessageById(String messageId) {
         return client.getRestClient().request("GET", "/channels/" + id + "/messages/" + Json.id(messageId), null)
                 .map(data -> Message.fromContext(client, data, guildId));

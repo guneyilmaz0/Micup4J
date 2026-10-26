@@ -10,6 +10,8 @@ public interface MessageChannel extends ISnowflake {
     ChannelType getType();
     net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendMessage(String content);
     net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendMessageEmbeds(MessageEmbed... embeds);
+    net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendFiles(net.guneyilmaz0.micup4j.utils.FileUpload... files);
+    net.guneyilmaz0.micup4j.requests.restaction.MessageCreateAction sendFiles(java.util.Collection<? extends net.guneyilmaz0.micup4j.utils.FileUpload> files);
     RestAction<Message> retrieveMessageById(String id);
     default RestAction<Message> retrieveMessageById(long id) { return retrieveMessageById(Long.toUnsignedString(id)); }
 }

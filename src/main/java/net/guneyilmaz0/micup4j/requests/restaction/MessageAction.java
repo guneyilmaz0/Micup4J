@@ -82,17 +82,93 @@ public abstract class MessageAction<A extends MessageAction<A>> extends RestActi
         final Micup client;
         final String method, path, guildId;
         final MessageBody body;
+        final java.util.List<net.guneyilmaz0.micup4j.utils.FileUpload> files = new java.util.ArrayList<>();
         State(Micup client, String method, String path, String guildId, ObjectNode body) {
             this.client = Objects.requireNonNull(client); this.method = method; this.path = path;
             this.guildId = guildId; this.body = new MessageBody(body);
         }
         CompletableFuture<Message> execute() {
+            java.util.List<net.guneyilmaz0.micup4j.utils.FileUpload> uploads;
+            synchronized (files) { uploads = java.util.List.copyOf(files); }
             ObjectNode payload = body.submit(() -> {
-                if (method.equals("POST") && !body.hasVisibleContent())
-                    throw new IllegalArgumentException("A message requires content or embeds");
+                if (method.equals("POST") && !body.hasVisibleContent() && uploads.isEmpty())
+                    throw new IllegalArgumentException("A message requires content, embeds or files");
             });
-            return client.getRestClient().request(method, path, payload)
+            if (uploads.isEmpty())
+                return client.getRestClient().request(method, path, payload).map(data -> Message.fromContext(client, data, guildId)).submit();
+            var attachments = payload.putArray("attachments");
+            for (int i = 0; i < uploads.size(); i++) {
+                var file = uploads.get(i);
+                var entry = attachments.addObject().put("id", i).put("filename", file.getName());
+                if (file.getDescription() != null) entry.put("description", file.getDescription());
+                if (file.isSpoiler()) entry.put("flags", 1 << 3);
+            }
+            return client.getRestClient().requestMultipart(method, path, payload, uploads)
                     .map(data -> Message.fromContext(client, data, guildId)).submit();
+        }
+    }
+    /**
+     * Replaces the message components; an empty call removes them.
+     *
+     * @param rows at most five action rows, message components only, unique custom ids
+     * @return this action
+     * @throws IllegalArgumentException if the rows are invalid for a message
+     */
+    public A setComponents(net.guneyilmaz0.micup4j.interactions.components.LayoutComponent... rows) { return setComponents(java.util.Arrays.asList(rows)); }
+
+    /**
+     * Replaces the message components; an empty collection removes them.
+     *
+     * @param rows at most five action rows, message components only, unique custom ids
+     * @return this action
+     * @throws IllegalArgumentException if the rows are invalid for a message
+     */
+    public A setComponents(java.util.Collection<? extends net.guneyilmaz0.micup4j.interactions.components.LayoutComponent> rows) { state.body.setComponents(rows); return self(); }
+
+    /**
+     * Appends action rows to the current components.
+     *
+     * @param rows the rows to add
+     * @return this action
+     * @throws IllegalArgumentException if the result would be invalid for a message
+     */
+    public A addComponents(net.guneyilmaz0.micup4j.interactions.components.LayoutComponent... rows) { state.body.addComponents(java.util.Arrays.asList(rows)); return self(); }
+
+    /**
+     * Replaces the components with one row.
+     *
+     * @param components the row's components
+     * @return this action
+     */
+    public A setActionRow(net.guneyilmaz0.micup4j.interactions.components.ItemComponent... components) { return setComponents(net.guneyilmaz0.micup4j.interactions.components.ActionRow.of(components)); }
+
+    /**
+     * Appends one row.
+     *
+     * @param components the row's components
+     * @return this action
+     */
+    public A addActionRow(net.guneyilmaz0.micup4j.interactions.components.ItemComponent... components) { return addComponents(net.guneyilmaz0.micup4j.interactions.components.ActionRow.of(components)); }
+
+    /** Most files on one message; Micup's default {@code max_attachments_per_message}. */
+    public static final int MAX_FILES = 10;
+
+    /**
+     * Replaces or extends the files. Only creation actions expose this.
+     *
+     * @param uploads the files
+     * @param append  whether to keep the current files
+     * @throws IllegalArgumentException if the result would exceed {@value #MAX_FILES} files
+     * @throws IllegalStateException if the action was already submitted
+     */
+    protected final void files(Collection<? extends net.guneyilmaz0.micup4j.utils.FileUpload> uploads, boolean append) {
+        Objects.requireNonNull(uploads, "files");
+        synchronized (state.files) {
+            if (state.body.isFrozen()) throw new IllegalStateException("Message action has already been submitted");
+            var next = new java.util.ArrayList<net.guneyilmaz0.micup4j.utils.FileUpload>(append ? state.files : java.util.List.of());
+            for (var upload : uploads) next.add(Objects.requireNonNull(upload, "file"));
+            if (next.size() > MAX_FILES) throw new IllegalArgumentException("A message supports at most " + MAX_FILES + " files");
+            state.files.clear(); state.files.addAll(next);
         }
     }
 }

@@ -62,6 +62,8 @@ public final class RestClient implements AutoCloseable {
     private static final class Job {
         final String method, path, payload, route, major;
         final Map<String, String> headers;
+        final byte[] raw;
+        final String rawType;
         final boolean auth, priority;
         final long deadline, order;
         final CompletableFuture<JsonNode> result = new CompletableFuture<>();
@@ -71,8 +73,8 @@ public final class RestClient implements AutoCloseable {
         long started;
         int attempts;
         boolean running, done;
-        Job(String method, String path, String payload, Map<String, String> headers, boolean auth, boolean priority, long deadline, long order) {
-            this.method = method; this.path = path; this.payload = payload; this.headers = headers; this.auth = auth;
+        Job(String method, String path, String payload, byte[] raw, String rawType, Map<String, String> headers, boolean auth, boolean priority, long deadline, long order) {
+            this.method = method; this.path = path; this.payload = payload; this.raw = raw; this.rawType = rawType; this.headers = headers; this.auth = auth;
             this.priority = priority; this.deadline = deadline; this.order = order;
             String[] keys = routeKeys(method, path, auth);
             route = keys[0]; major = keys[1];
@@ -185,16 +187,47 @@ public final class RestClient implements AutoCloseable {
     public RestAction<JsonNode> requestCallback(String path, JsonNode body, long deadlineNanos) {
         return action("POST", path, body, Map.of(), false, true, deadlineNanos);
     }
+    /**
+     * Creates an authenticated {@code multipart/form-data} request with a {@code payload_json} part and one
+     * {@code files[N]} part per file. Nothing is sent until the action is executed; the encoded body is kept in memory so a
+     * rate-limited attempt can be retried.
+     *
+     * @param method the HTTP method
+     * @param path   the route below {@code /v1}
+     * @param json   the JSON payload
+     * @param files  the files, in index order
+     * @return the lazy request
+     * @throws IllegalArgumentException if the method or path is invalid
+     */
+    public RestAction<JsonNode> requestMultipart(String method, String path, JsonNode json, List<net.guneyilmaz0.micup4j.utils.FileUpload> files) {
+        String boundary = "micup4j" + java.util.UUID.randomUUID().toString().replace("-", "");
+        var out = new java.io.ByteArrayOutputStream();
+        java.util.function.Consumer<String> text = value -> out.writeBytes(value.getBytes(StandardCharsets.UTF_8));
+        text.accept("--" + boundary + "\r\nContent-Disposition: form-data; name=\"payload_json\"\r\nContent-Type: application/json\r\n\r\n");
+        text.accept(json.toString());
+        for (int i = 0; i < files.size(); i++) {
+            var file = files.get(i);
+            String name = file.getName().replace("\\", "_").replace("\"", "_");
+            text.accept("\r\n--" + boundary + "\r\nContent-Disposition: form-data; name=\"files[" + i + "]\"; filename=\"" + name
+                    + "\"\r\nContent-Type: " + file.getContentType() + "\r\n\r\n");
+            out.writeBytes(file.rawData());
+        }
+        text.accept("\r\n--" + boundary + "--\r\n");
+        return action(method, path, null, out.toByteArray(), "multipart/form-data; boundary=" + boundary, Map.of(), true, false, Long.MAX_VALUE);
+    }
     private RestAction<JsonNode> action(String method, String path, JsonNode body, Map<String, String> headers, boolean auth, boolean priority, long deadline) {
+        return action(method, path, body, null, null, headers, auth, priority, deadline);
+    }
+    private RestAction<JsonNode> action(String method, String path, JsonNode body, byte[] raw, String rawType, Map<String, String> headers, boolean auth, boolean priority, long deadline) {
         if (!Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD").contains(method)) throw new IllegalArgumentException("Invalid HTTP method");
         try {
             if (path == null || !path.startsWith("/") || path.startsWith("//") || path.contains("..") || path.contains("#") || path.contains("\\")) throw new IllegalArgumentException();
             URI.create("/v1" + path);
         } catch (IllegalArgumentException error) { throw new IllegalArgumentException("Invalid API path"); }
         String payload = body == null ? null : body.toString();
-        return new RestAction<>(() -> enqueue(method, path, payload, headers, auth, priority, deadline));
+        return new RestAction<>(() -> enqueue(method, path, payload, raw, rawType, headers, auth, priority, deadline));
     }
-    private CompletableFuture<JsonNode> enqueue(String method, String path, String payload, Map<String, String> headers, boolean auth, boolean priority, long deadline) {
+    private CompletableFuture<JsonNode> enqueue(String method, String path, String payload, byte[] raw, String rawType, Map<String, String> headers, boolean auth, boolean priority, long deadline) {
         Job job;
         synchronized (lock) {
             if (draining) return CompletableFuture.failedFuture(new RejectedExecutionException("Client is shutting down"));
@@ -204,7 +237,7 @@ public final class RestClient implements AutoCloseable {
                 return CompletableFuture.failedFuture(new RejectedExecutionException("REST queue is full"));
             long effective = Math.min(deadline, System.nanoTime() + config.totalTimeout().toNanos());
             if (effective <= System.nanoTime()) return CompletableFuture.failedFuture(new TimeoutException("Request deadline expired before submission"));
-            job = new Job(method, path, payload, headers, auth, priority, effective, ++order);
+            job = new Job(method, path, payload, raw, rawType, headers, auth, priority, effective, ++order);
             if (priority) callbackCount++; else normalCount++;
             jobs.add(job); waiting.add(job); submitted++;
             job.expiry = scheduler.schedule(() -> expire(job), Math.max(0, effective - System.nanoTime()), TimeUnit.NANOSECONDS);
@@ -268,8 +301,9 @@ public final class RestClient implements AutoCloseable {
                     .header("Accept", "application/json").header("User-Agent", MicupVersion.getUserAgent());
             if (job.auth) builder.header("Authorization", "Bot " + token);
             if (job.payload != null) builder.header("Content-Type", "application/json");
+            if (job.raw != null) builder.header("Content-Type", job.rawType);
             job.headers.forEach(builder::header);
-            flight = http.sendAsync(builder.method(job.method, job.payload == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(job.payload)).build(), HttpResponse.BodyHandlers.ofString());
+            flight = http.sendAsync(builder.method(job.method, job.raw != null ? HttpRequest.BodyPublishers.ofByteArray(job.raw) : job.payload == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(job.payload)).build(), HttpResponse.BodyHandlers.ofString());
         } catch (Exception error) { failed(job, new IllegalStateException("Could not start Micup request")); return; }
         synchronized (lock) {
             if (job.done || closed) { flight.cancel(true); return; }

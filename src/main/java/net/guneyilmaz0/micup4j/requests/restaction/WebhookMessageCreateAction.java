@@ -144,4 +144,46 @@ public final class WebhookMessageCreateAction<T> extends RestAction<T> {
         body.setEmbeds(embeds, true);
         return this;
     }
+    /**
+     * Replaces the message components; an empty call removes them.
+     *
+     * @param rows at most five action rows, message components only, unique custom ids
+     * @return this action
+     * @throws IllegalArgumentException if the rows are invalid for a message
+     */
+    public WebhookMessageCreateAction<T> setComponents(net.guneyilmaz0.micup4j.interactions.components.LayoutComponent... rows) { return setComponents(java.util.Arrays.asList(rows)); }
+
+    /**
+     * Replaces the message components; an empty collection removes them.
+     *
+     * @param rows at most five action rows, message components only, unique custom ids
+     * @return this action
+     * @throws IllegalArgumentException if the rows are invalid for a message
+     */
+    public WebhookMessageCreateAction<T> setComponents(java.util.Collection<? extends net.guneyilmaz0.micup4j.interactions.components.LayoutComponent> rows) { body.setComponents(rows); return this; }
+
+    /**
+     * Appends action rows to the current components.
+     *
+     * @param rows the rows to add
+     * @return this action
+     * @throws IllegalArgumentException if the result would be invalid for a message
+     */
+    public WebhookMessageCreateAction<T> addComponents(net.guneyilmaz0.micup4j.interactions.components.LayoutComponent... rows) { body.addComponents(java.util.Arrays.asList(rows)); return this; }
+
+    /**
+     * Replaces the components with one row.
+     *
+     * @param components the row's components
+     * @return this action
+     */
+    public WebhookMessageCreateAction<T> setActionRow(net.guneyilmaz0.micup4j.interactions.components.ItemComponent... components) { return setComponents(net.guneyilmaz0.micup4j.interactions.components.ActionRow.of(components)); }
+
+    /**
+     * Appends one row.
+     *
+     * @param components the row's components
+     * @return this action
+     */
+    public WebhookMessageCreateAction<T> addActionRow(net.guneyilmaz0.micup4j.interactions.components.ItemComponent... components) { return addComponents(net.guneyilmaz0.micup4j.interactions.components.ActionRow.of(components)); }
 }

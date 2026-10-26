@@ -493,6 +493,21 @@ public final class Micup implements AutoCloseable {
 
     private static final Executor MEMBER_PARSER = task -> Thread.ofVirtual().name("micup4j-members").start(task);
 
+    private InteractionCreateEvent interactionEvent(long sequence, JsonNode data) {
+        return switch (data.path("type").asInt()) {
+            case 2 -> new net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent(this, sequence, data);
+            case 3 -> switch (data.path("data").path("component_type").asInt()) {
+                case 2 -> new net.guneyilmaz0.micup4j.events.interaction.component.ButtonInteractionEvent(this, sequence, data);
+                case 3 -> new net.guneyilmaz0.micup4j.events.interaction.component.StringSelectInteractionEvent(this, sequence, data);
+                case 5, 6, 7, 8 -> new net.guneyilmaz0.micup4j.events.interaction.component.EntitySelectInteractionEvent(this, sequence, data);
+                default -> new net.guneyilmaz0.micup4j.events.interaction.component.GenericComponentInteractionCreateEvent(this, sequence, data);
+            };
+            case 4 -> new net.guneyilmaz0.micup4j.events.interaction.command.CommandAutoCompleteInteractionEvent(this, sequence, data);
+            case 5 -> new net.guneyilmaz0.micup4j.events.interaction.ModalInteractionEvent(this, sequence, data);
+            default -> new InteractionCreateEvent(this, sequence, data);
+        };
+    }
+
     /**
      * Searches Micup's member index. Results are partial and may be stale; see {@link MemberSearchResult}.
      *
@@ -995,11 +1010,7 @@ public final class Micup implements AutoCloseable {
                 case "MESSAGE_DELETE" -> typedOrRaw(type, sequence, data,
                         () -> new net.guneyilmaz0.micup4j.events.message.MessageDeleteEvent(this, sequence, data));
                 // Member events stay raw here and are typed in applyEntityUpdate, around the cache apply.
-                case "INTERACTION_CREATE" -> typedOrRaw(type, sequence, data, () -> data.path("type").asInt() == 2
-                        ? new net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent(this, sequence, data)
-                        : data.path("type").asInt() == 4
-                        ? new net.guneyilmaz0.micup4j.events.interaction.command.CommandAutoCompleteInteractionEvent(this, sequence, data)
-                        : new InteractionCreateEvent(this, sequence, data));
+                case "INTERACTION_CREATE" -> typedOrRaw(type, sequence, data, () -> interactionEvent(sequence, data));
                 default -> new GenericEvent(this, type, sequence, data);
             };
             // The frame data is never mutated after parsing; the executor hand-off publishes it to the event thread.

@@ -48,6 +48,10 @@ public final class OptionData {
     public synchronized OptionData setMinValue(long value) { return number("min_value", value, true); }
     public synchronized OptionData setMaxValue(long value) { return number("max_value", value, true); }
     public synchronized OptionData setMinValue(double value) { return number("min_value", value, false); }
+    /** Sets both integer bounds, as JDA's {@code setRequiredRange}. */
+    public synchronized OptionData setRequiredRange(long min, long max) { setMinValue(min); return setMaxValue(max); }
+    /** Sets both number bounds, as JDA's {@code setRequiredRange}. */
+    public synchronized OptionData setRequiredRange(double min, double max) { setMinValue(min); return setMaxValue(max); }
     public synchronized OptionData setMaxValue(double value) { return number("max_value", value, false); }
     private OptionData number(String key, double value, boolean integral) {
         if ((type != OptionType.INTEGER && type != OptionType.NUMBER) || (type == OptionType.INTEGER && !integral)
