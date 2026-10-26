@@ -7,7 +7,7 @@ plugins {
     kotlin("jvm") version "2.3.0"
 }
 
-group = "net.guneyilmaz0.micup4j"
+group = "com.swadedev.micup4j"
 version = providers.gradleProperty("version").get()
 
 repositories { mavenCentral() }
@@ -41,7 +41,7 @@ tasks.javadoc {
         encoding = "UTF-8"
         // Every supported type and member must be documented; internals are exempt.
         addBooleanOption("Xdoclint:all", true)
-        addBooleanOption("Xdoclint/package:-net.guneyilmaz0.micup4j.internal", true)
+        addBooleanOption("Xdoclint/package:-com.swadedev.micup4j.internal", true)
         addStringOption("Xmaxwarns", "10000")
         addBooleanOption("Werror", true)
     }
@@ -147,7 +147,7 @@ tasks.register<JavaExec>("runExample") {
     group = "application"
     description = "Runs the example bot using MICUP_TOKEN from the environment"
     classpath = example.runtimeClasspath
-    mainClass.set("net.guneyilmaz0.micup4j.examples.PingBot")
+    mainClass.set("com.swadedev.micup4j.examples.PingBot")
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
 }
 tasks.named("check") { dependsOn(tasks.named(example.classesTaskName)) }
@@ -195,7 +195,7 @@ tasks.register<JavaExec>("loadTest") {
     group = "verification"
     description = "Runs the load harness; tune with -Pload.events, -Pload.pacedRate, -Pload.guilds, -Pload.requests, -Pload.shards, -Pload.soakSeconds"
     classpath = load.runtimeClasspath
-    mainClass.set("net.guneyilmaz0.micup4j.load.LoadHarness")
+    mainClass.set("com.swadedev.micup4j.load.LoadHarness")
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
     jvmArgs("-Xms512m", "-Xmx512m", "-XX:+UseG1GC")
     val output = layout.buildDirectory.file("reports/load/results.json")

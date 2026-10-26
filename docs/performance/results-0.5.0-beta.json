@@ -1,0 +1,100 @@
+{
+  "environment" : {
+    "java" : "OpenJDK 64-Bit Server VM 21.0.12.1+12-LTS",
+    "os" : "Linux 7.2.11-200.fc44.x86_64 amd64",
+    "cpus" : 8,
+    "maxHeapMiB" : 512,
+    "gc" : "[G1 Young Generation, G1 Concurrent GC, G1 Old Generation]",
+    "transport" : "in-process MockWebServer over loopback"
+  },
+  "eventBurst" : {
+    "events" : 50000,
+    "offeredRatePerSecond" : "unbounded",
+    "delivered" : 50000,
+    "completed" : true,
+    "seconds" : 0.985387638,
+    "eventsPerSecond" : 50741,
+    "listenerDelayMicros" : {
+      "p50" : 534169.0,
+      "p95" : 770205.1,
+      "p99" : 778492.5,
+      "p999" : 780859.1,
+      "max" : 781314.8
+    },
+    "allocatedBytesPerEvent" : 8239
+  },
+  "eventsPaced" : {
+    "events" : 25000,
+    "offeredRatePerSecond" : "5000",
+    "delivered" : 25000,
+    "completed" : true,
+    "seconds" : 4.99985682,
+    "eventsPerSecond" : 5000,
+    "listenerDelayMicros" : {
+      "p50" : 38.5,
+      "p95" : 192.2,
+      "p99" : 3139.6,
+      "p999" : 36040.9,
+      "max" : 40495.3
+    },
+    "allocatedBytesPerEvent" : 8955
+  },
+  "startupBurst" : {
+    "guilds" : 1000,
+    "rolesChannelsMembersPerGuild" : "8/12/20",
+    "completed" : true,
+    "seconds" : 0.243196151,
+    "guildsPerSecond" : 4112,
+    "cachedGuilds" : 1000,
+    "retainedHeapMiB" : 10.0,
+    "retainedBytesPerGuild" : 10478
+  },
+  "restBurst" : {
+    "requests" : 250,
+    "seconds" : 5.069159437,
+    "requestsPerSecond" : 49,
+    "note" : "Includes the scheduler's 20 ms global spacing (50 requests/s per client)",
+    "latencyMillis" : {
+      "p50" : 2534.5,
+      "p95" : 4805.3,
+      "p99" : 5008.1,
+      "p999" : 5047.1,
+      "max" : 5047.1
+    }
+  },
+  "restSequential" : {
+    "requests" : 50,
+    "note" : "One request at a time; compare with rawHttpBaselineMillis, the bare HttpClient latency against the same mock",
+    "latencyMillis" : {
+      "p50" : 43.1,
+      "p95" : 44.2,
+      "p99" : 59.8,
+      "p999" : 59.8,
+      "max" : 59.8
+    },
+    "rawHttpBaselineMillis" : {
+      "p50" : 43.0,
+      "p95" : 44.1,
+      "p99" : 44.3,
+      "p999" : 44.3,
+      "max" : 44.3
+    }
+  },
+  "shards" : {
+    "shards" : 8,
+    "ready" : true,
+    "startSeconds" : 0.418014209,
+    "millisPerShard" : 52.251776125,
+    "gracefulShutdown" : true,
+    "note" : "Sequential start without spacing; production default spaces starts by 1 s"
+  },
+  "soak" : {
+    "seconds" : 120,
+    "sent" : 56309,
+    "received" : 56309,
+    "lost" : 0,
+    "reconnects" : 11,
+    "finalStatus" : "CONNECTED",
+    "heapDriftMiB" : 2.7
+  }
+}

@@ -14,7 +14,7 @@ client.updateCommands().addCommands(
 ).queue();
 ```
 
-Import command builders from `net.guneyilmaz0.micup4j.interactions.commands.build` and `OptionType`/`Command` from `interactions.commands`. Existing basic `SlashCommand` and legacy option-type calls remain supported.
+Import command builders from `com.swadedev.micup4j.interactions.commands.build` and `OptionType`/`Command` from `interactions.commands`. Existing basic `SlashCommand` and legacy option-type calls remain supported.
 
 A command contains scalar options **or** subcommands/groups. A group contains 1–25 subcommands; a subcommand contains up to 25 scalar options. No deeper nesting is supported. Names are unique among siblings, and required scalar options precede optional options. Structural options have no `required` field. Added options/subcommands/groups are copied immediately; finish configuring a child before adding it. Registration actions copy complete definitions when added. Invalid additions leave the previous definition intact.
 
@@ -76,6 +76,6 @@ Actions are lazy. Setters stop accepting changes after the first valid execution
 
 ## Verification and references
 
-[CommandToolkitExample](../src/examples/java/net/guneyilmaz0/micup4j/examples/CommandToolkitExample.java) is compiled by the normal SDK check. Java fixtures verify nested registration, typed autocomplete dispatch/callback payloads, invalid definition rollback, lazy message requests, reply references and partial edits. The [Kotlin source fixture](../src/compatibility/kotlin/JdaSourceCompatibilityTest.kt) covers the same familiar chains in the BMO composite build; see the [migration guide](JDA-COMPATIBILITY.md) for its manual test procedure.
+[CommandToolkitExample](../src/examples/java/com/swadedev/micup4j/examples/CommandToolkitExample.java) is compiled by the normal SDK check. Java fixtures verify nested registration, typed autocomplete dispatch/callback payloads, invalid definition rollback, lazy message requests, reply references and partial edits. The [Kotlin source fixture](../src/compatibility/kotlin/JdaSourceCompatibilityTest.kt) covers the same familiar chains in the BMO composite build; see the [migration guide](JDA-COMPATIBILITY.md) for its manual test procedure.
 
 Protocol rules follow [Micup application commands](https://micup.gg/docs/http-api/application-commands/) and [Micup interactions](https://micup.gg/docs/http-api/interactions/). Method conventions are based on the official JDA documentation for [OptionData](https://docs.jda.wiki/net/dv8tion/jda/api/interactions/commands/build/OptionData.html) and [CommandAutoCompleteInteractionEvent](https://docs.jda.wiki/net/dv8tion/jda/api/events/interaction/command/CommandAutoCompleteInteractionEvent.html). Local fixtures do not establish live-server qualification or performance parity.

@@ -3,26 +3,26 @@ package net.guneyilmaz0.bmo
 import java.awt.Color
 import java.time.Duration
 import java.util.concurrent.TimeUnit
-import net.guneyilmaz0.micup4j.EmbedBuilder
-import net.guneyilmaz0.micup4j.entities.Guild
-import net.guneyilmaz0.micup4j.entities.Member
-import net.guneyilmaz0.micup4j.entities.Message
-import net.guneyilmaz0.micup4j.entities.RoleColors
-import net.guneyilmaz0.micup4j.events.guild.GuildReadyEvent
-import net.guneyilmaz0.micup4j.events.guild.member.GuildMemberJoinEvent
-import net.guneyilmaz0.micup4j.events.guild.member.GuildMemberRemoveEvent
-import net.guneyilmaz0.micup4j.events.message.MessageDeleteEvent
-import net.guneyilmaz0.micup4j.events.message.MessageUpdateEvent
-import net.guneyilmaz0.micup4j.events.session.ShutdownEvent
-import net.guneyilmaz0.micup4j.hooks.ListenerAdapter
-import net.guneyilmaz0.micup4j.interactions.commands.OptionType
-import net.guneyilmaz0.micup4j.interactions.commands.build.Commands
-import net.guneyilmaz0.micup4j.interactions.commands.build.OptionData
-import net.guneyilmaz0.micup4j.interactions.commands.build.SubcommandData
-import net.guneyilmaz0.micup4j.events.interaction.command.CommandAutoCompleteInteractionEvent
-import net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent
-import net.guneyilmaz0.micup4j.interactions.InteractionHook
-import net.guneyilmaz0.micup4j.requests.RestAction
+import com.swadedev.micup4j.EmbedBuilder
+import com.swadedev.micup4j.entities.Guild
+import com.swadedev.micup4j.entities.Member
+import com.swadedev.micup4j.entities.Message
+import com.swadedev.micup4j.entities.RoleColors
+import com.swadedev.micup4j.events.guild.GuildReadyEvent
+import com.swadedev.micup4j.events.guild.member.GuildMemberJoinEvent
+import com.swadedev.micup4j.events.guild.member.GuildMemberRemoveEvent
+import com.swadedev.micup4j.events.message.MessageDeleteEvent
+import com.swadedev.micup4j.events.message.MessageUpdateEvent
+import com.swadedev.micup4j.events.session.ShutdownEvent
+import com.swadedev.micup4j.hooks.ListenerAdapter
+import com.swadedev.micup4j.interactions.commands.OptionType
+import com.swadedev.micup4j.interactions.commands.build.Commands
+import com.swadedev.micup4j.interactions.commands.build.OptionData
+import com.swadedev.micup4j.interactions.commands.build.SubcommandData
+import com.swadedev.micup4j.events.interaction.command.CommandAutoCompleteInteractionEvent
+import com.swadedev.micup4j.events.interaction.command.SlashCommandInteractionEvent
+import com.swadedev.micup4j.interactions.InteractionHook
+import com.swadedev.micup4j.requests.RestAction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -40,7 +40,7 @@ class JdaSourceCompatibilityTest : ListenerAdapter() {
 
     override fun onShutdown(event: ShutdownEvent) {
         check(event.code == 1000 && event.timeShutdown != null)
-        check(event.jda.status == net.guneyilmaz0.micup4j.Micup.Status.SHUTDOWN)
+        check(event.jda.status == com.swadedev.micup4j.Micup.Status.SHUTDOWN)
     }
 
     override fun onGuildReady(event: GuildReadyEvent) {

@@ -6,7 +6,7 @@ Micup4J uses Gateway v1 with JSON text frames and no compression. Heartbeat timi
 
 ```java
 import java.time.Duration;
-import net.guneyilmaz0.micup4j.config.GatewayConfig;
+import com.swadedev.micup4j.config.GatewayConfig;
 
 var timing = new GatewayConfig(
     Duration.ofSeconds(15), // WebSocket connection timeout.
@@ -35,7 +35,7 @@ public void onReconnect(ReconnectEvent event) {
 }
 ```
 
-Both event classes live in `net.guneyilmaz0.micup4j.events`. They have sequence `-1`: these are local diagnostics, not Gateway dispatches, and they never advance a heartbeat acknowledgement.
+Both event classes live in `com.swadedev.micup4j.events`. They have sequence `-1`: these are local diagnostics, not Gateway dispatches, and they never advance a heartbeat acknowledgement.
 
 Reasons distinguish a server reconnect request, transport error, missed heartbeat ACK, handshake timeout, invalid payload, and close frame. A close diagnostic contains its numeric code, never the server-provided reason text or authentication payload.
 

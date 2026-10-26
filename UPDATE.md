@@ -9,13 +9,15 @@
 | Suggested Git tag | `v1.0.0-rc.1` |
 | Release date | October 27, 2026 |
 | Java baseline | Java 21 |
-| Dependency | `net.guneyilmaz0.micup4j:Micup4J:1.0.0-rc.1` |
+| Dependency | `com.swadedev.micup4j:Micup4J:1.0.0-rc.1` |
 | Status | Release candidate; not yet published to Maven Central |
 
 ## Upgrading from 0.5.0-beta
 
-Change the dependency to `1.0.0-rc.1` and recompile. There are no removals.
+Change the dependency to `com.swadedev.micup4j:Micup4J:1.0.0-rc.1` and recompile. There are no API removals, but the packages moved:
 
+- **Rename imports:** replace `net.guneyilmaz0.micup4j` with `com.swadedev.micup4j` everywhere, for example with `grep -rl 'net.guneyilmaz0.micup4j' src | xargs sed -i 's/net\.guneyilmaz0\.micup4j/com.swadedev.micup4j/g'`. Class names, methods and behavior are unchanged.
+- **Update the dependency:** the group is now `com.swadedev.micup4j`. For a composite build, the sibling checkout's `group` changes accordingly.
 - Deprecation warnings point at legacy aliases; the [compatibility policy](docs/COMPATIBILITY.md#deprecated-in-10) lists each replacement. They keep working through 1.x.
 - From 1.0, minor releases are source- and binary-compatible. The policy describes what is excluded, such as the `internal` package.
 
@@ -101,7 +103,7 @@ var embed = new EmbedBuilder().setTitle("Avatar")
 event.replyEmbeds(true, embed).queue();
 ```
 
-Imports: `net.guneyilmaz0.micup4j.interactions.SlashCommand`, `net.guneyilmaz0.micup4j.interactions.OptionType`, and `net.guneyilmaz0.micup4j.entities.EmbedBuilder`.
+Imports: `com.swadedev.micup4j.interactions.SlashCommand`, `com.swadedev.micup4j.interactions.OptionType`, and `com.swadedev.micup4j.entities.EmbedBuilder`.
 
 `SlashCommand` remains immutable. Its two-argument constructor and name/description accessors are retained; the definition now also has an option list. Retain the returned value when calling `addOption`.
 

@@ -2,19 +2,19 @@
 
 Micup4J now prioritizes familiar JDA source patterns for common text bots. The target is to keep handler bodies and method chains recognizable while replacing the transport with Micup's protocol. This is an implemented subset, not a drop-in replacement for the complete JDA library or a claim of a measured compatibility percentage.
 
-The [compiled example](../src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java) uses the supported JDA-style package layout and method chains. `./gradlew build` compiles it and runs local protocol tests. The example has not been tested against a live Micup account in this change.
+The [compiled example](../src/examples/java/com/swadedev/micup4j/examples/JdaStyleBot.java) uses the supported JDA-style package layout and method chains. `./gradlew build` compiles it and runs local protocol tests. The example has not been tested against a live Micup account in this change.
 
 ## Porting common code
 
-Change the import prefix from `net.dv8tion.jda.api` to `net.guneyilmaz0.micup4j`. Replace the `JDA` session type with `Micup`, and `JDABuilder` with `MicupBuilder`. For the subset below, class names and handler bodies otherwise keep their familiar shape.
+Change the import prefix from `net.dv8tion.jda.api` to `com.swadedev.micup4j`. Replace the `JDA` session type with `Micup`, and `JDABuilder` with `MicupBuilder`. For the subset below, class names and handler bodies otherwise keep their familiar shape.
 
 ```java
-import net.guneyilmaz0.micup4j.Micup;
-import net.guneyilmaz0.micup4j.MicupBuilder;
-import net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent;
-import net.guneyilmaz0.micup4j.hooks.ListenerAdapter;
-import net.guneyilmaz0.micup4j.interactions.commands.OptionType;
-import net.guneyilmaz0.micup4j.interactions.commands.build.Commands;
+import com.swadedev.micup4j.Micup;
+import com.swadedev.micup4j.MicupBuilder;
+import com.swadedev.micup4j.events.interaction.command.SlashCommandInteractionEvent;
+import com.swadedev.micup4j.hooks.ListenerAdapter;
+import com.swadedev.micup4j.interactions.commands.OptionType;
+import com.swadedev.micup4j.interactions.commands.build.Commands;
 
 import java.time.Duration;
 
@@ -122,7 +122,7 @@ Member permission and role/color helpers require usable cached guild/role state.
 
 ## Mentions and BMO-style avatar code
 
-The [BMO-style avatar example](../src/examples/java/net/guneyilmaz0/micup4j/examples/BmoStyleAvatar.java) compiles the familiar `message.getMentions().getMembers()` and `target.getColors().getPrimary()` pattern. The integration suite sends its resulting embed to a local HTTP fixture and verifies the selected user's avatar URL and role color. A [Kotlin source fixture](../src/compatibility/kotlin/JdaSourceCompatibilityTest.kt) checks the original `target.colors.primary` JavaBean property types and compiles the Kotlin mention/guild-ready/avatar flow in the sibling BMO integration project. The library's Java build compiles the Java examples; it does not run Kotlin compilation. To repeat the Kotlin check with a configured sibling BMO checkout:
+The [BMO-style avatar example](../src/examples/java/com/swadedev/micup4j/examples/BmoStyleAvatar.java) compiles the familiar `message.getMentions().getMembers()` and `target.getColors().getPrimary()` pattern. The integration suite sends its resulting embed to a local HTTP fixture and verifies the selected user's avatar URL and role color. A [Kotlin source fixture](../src/compatibility/kotlin/JdaSourceCompatibilityTest.kt) checks the original `target.colors.primary` JavaBean property types and compiles the Kotlin mention/guild-ready/avatar flow in the sibling BMO integration project. The library's Java build compiles the Java examples; it does not run Kotlin compilation. To repeat the Kotlin check with a configured sibling BMO checkout:
 
 ```bash
 cp src/compatibility/kotlin/JdaSourceCompatibilityTest.kt ../BMO-micup/src/test/kotlin/net/guneyilmaz0/bmo/
@@ -196,4 +196,4 @@ There is no promise that replacing imports and the builder is sufficient for eve
 - [Micup message mentions](https://micup.gg/docs/http-api/messages/)
 - [JDA guild readiness](https://docs.jda.wiki/net/dv8tion/jda/api/events/guild/GuildReadyEvent.html)
 
-See [advanced commands and fluent messages](COMMANDS.md) and the [compiled toolkit example](../src/examples/java/net/guneyilmaz0/micup4j/examples/CommandToolkitExample.java) for the supported builder chains.
+See [advanced commands and fluent messages](COMMANDS.md) and the [compiled toolkit example](../src/examples/java/com/swadedev/micup4j/examples/CommandToolkitExample.java) for the supported builder chains.

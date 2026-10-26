@@ -17,7 +17,7 @@ Milestones describe intended scope, not guaranteed dates. Micup API availability
 
 Keep common JDA bot handler bodies and method chains usable after import-prefix changes and the `JDA`/`JDABuilder` to `Micup`/`MicupBuilder` rename. Prioritize working, tested equivalents over new Micup-only calling conventions. Wire behavior and limits follow Micup. Unsupported Discord features must be explicit rather than silent no-ops.
 
-The first supported source fixture is [JdaStyleBot](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java); see the [compatibility matrix and migration guide](docs/JDA-COMPATIBILITY.md). This is source compatibility for an expanding subset, not a measured percentage or binary compatibility claim.
+The first supported source fixture is [JdaStyleBot](src/examples/java/com/swadedev/micup4j/examples/JdaStyleBot.java); see the [compatibility matrix and migration guide](docs/JDA-COMPATIBILITY.md). This is source compatibility for an expanding subset, not a measured percentage or binary compatibility claim.
 
 - [x] Common listener packages, typed slash callbacks and entity getter conventions.
 - [x] Mutable `Commands.slash`, typed bulk command actions and guild command operations.

@@ -12,7 +12,7 @@ Micup4J provides a familiar builder, event listener, and REST action API inspire
 
 ## What's new in 1.0 RC 1
 
-`1.0.0-rc.1` freezes the public API under a [compatibility policy](docs/COMPATIBILITY.md) with a protocol matrix, documents every supported type and member, and adds signed, reproducible release tooling. `0.5.0-beta` added a shard manager with controlled startup and shutdown, shared REST rate limits across sessions of one token, and a repeatable load harness with published results; see [sharding](docs/SHARDING.md) and [performance](docs/PERFORMANCE.md). `0.4.0-alpha` added buttons, select menus, action rows and modals with typed component and modal events, plus file uploads; see the [components guide](docs/COMPONENTS.md). `0.3.0-alpha` added typed guild/member/role/channel reads, bounded member pagination, configurable entity caches and permission calculations, moderation and role actions with audit log reasons, indexed member search and Gateway member requests. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
+`1.0.0-rc.1` freezes the public API under a [compatibility policy](docs/COMPATIBILITY.md) with a protocol matrix, documents every supported type and member, and adds signed, reproducible release tooling. `0.5.0-beta` added a shard manager with controlled startup and shutdown, shared REST rate limits across sessions of one token, and a repeatable load harness with published results; see [sharding](docs/SHARDING.md) and [performance](docs/PERFORMANCE.md). `0.4.0-alpha` added buttons, select menus, action rows and modals with typed component and modal events, plus file uploads; see the [components guide](docs/COMPONENTS.md). `0.3.0-alpha` added typed guild/member/role/channel reads, bounded member pagination, configurable entity caches and permission calculations, moderation and role actions with audit log reasons, indexed member search and Gateway member requests. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/com/swadedev/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
 
 ## Supported features
 
@@ -80,7 +80,7 @@ In your bot's `build.gradle.kts`:
 repositories { mavenCentral() }
 
 dependencies {
-    implementation("net.guneyilmaz0.micup4j:Micup4J:1.0.0-rc.1")
+    implementation("com.swadedev.micup4j:Micup4J:1.0.0-rc.1")
 }
 ```
 
@@ -103,9 +103,9 @@ Create a bot in **Micup → Settings → Applications**, save its full token, an
 The included example listens for `!ping` and responds with `Pong!`:
 
 ```java
-import net.guneyilmaz0.micup4j.MicupBuilder;
-import net.guneyilmaz0.micup4j.events.MessageReceivedEvent;
-import net.guneyilmaz0.micup4j.hooks.ListenerAdapter;
+import com.swadedev.micup4j.MicupBuilder;
+import com.swadedev.micup4j.events.MessageReceivedEvent;
+import com.swadedev.micup4j.hooks.ListenerAdapter;
 
 import java.time.Duration;
 
@@ -161,7 +161,7 @@ unset MICUP_TOKEN
 
 The library and example read no `.env` file automatically. `.env` loading belongs to the consuming application; BMO provides its own loader.
 
-Full source: [PingBot.java](src/examples/java/net/guneyilmaz0/micup4j/examples/PingBot.java).
+Full source: [PingBot.java](src/examples/java/com/swadedev/micup4j/examples/PingBot.java).
 
 ## Working with REST actions
 
@@ -193,7 +193,7 @@ Channel handles do not perform a lookup or guarantee permission to access a chan
 After the client is ready, register a command:
 
 ```java
-import net.guneyilmaz0.micup4j.interactions.SlashCommand;
+import com.swadedev.micup4j.interactions.SlashCommand;
 
 client.updateGuildCommands(
     "123456789012345678",
@@ -214,7 +214,7 @@ public void onInteractionCreate(InteractionCreateEvent event) {
 }
 ```
 
-Import `net.guneyilmaz0.micup4j.events.InteractionCreateEvent` for this handler.
+Import `com.swadedev.micup4j.events.InteractionCreateEvent` for this handler.
 
 For longer work, submit `deferReply(true)` first and chain `editOriginal(...)` after it completes. Micup requires the initial response within **3 seconds** and permits later edits and followups within **15 minutes**. Those deadlines are enforced by the server. See [Interactions](https://micup.gg/docs/http-api/interactions/).
 
@@ -223,8 +223,8 @@ For longer work, submit `deferReply(true)` first and chain `editOriginal(...)` a
 ## Embeds and typed options
 
 ```java
-import net.guneyilmaz0.micup4j.entities.EmbedBuilder;
-import net.guneyilmaz0.micup4j.interactions.OptionType;
+import com.swadedev.micup4j.entities.EmbedBuilder;
+import com.swadedev.micup4j.interactions.OptionType;
 
 var embed = new EmbedBuilder()
     .setTitle("Avatar", "https://example.com/avatar.webp")

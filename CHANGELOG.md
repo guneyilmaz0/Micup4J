@@ -6,6 +6,10 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 
 ## [1.0.0-rc.1] — 2026-10-27
 
+### Breaking
+
+- Packages move from `net.guneyilmaz0.micup4j` to `com.swadedev.micup4j`, and the Maven coordinates become `com.swadedev.micup4j:Micup4J`. Class names and APIs are otherwise unchanged; replace the import prefix and the dependency, then recompile.
+
 ### Added
 
 - [Compatibility policy and protocol matrix](docs/COMPATIBILITY.md): semantic versioning from 1.0, the supported API surface, exclusions, deprecations and Micup feature/deployment coverage.
@@ -49,7 +53,7 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - `replyModal(Modal)` on slash command and component events (callback type 9), and `MessageEditCallbackAction` for callback types 6 and 7.
 - File uploads: `utils.FileUpload`, `MessageCreateAction.addFiles/setFiles`, `MessageChannel.sendFiles` and `Message.replyFiles`, sent as `multipart/form-data` with attachment descriptions and spoiler flags; up to 10 files per message.
 - `OptionData.setRequiredRange(...)`.
-- Compiled [moderation](src/examples/java/net/guneyilmaz0/micup4j/examples/ModerationExample.java) and [interactive menu](src/examples/java/net/guneyilmaz0/micup4j/examples/InteractiveMenuExample.java) examples, and a [components guide](docs/COMPONENTS.md).
+- Compiled [moderation](src/examples/java/com/swadedev/micup4j/examples/ModerationExample.java) and [interactive menu](src/examples/java/com/swadedev/micup4j/examples/InteractiveMenuExample.java) examples, and a [components guide](docs/COMPONENTS.md).
 
 ### Breaking
 

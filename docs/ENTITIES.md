@@ -69,7 +69,7 @@ var client = MicupBuilder.createDefault(token)
     .build();
 ```
 
-Import `net.guneyilmaz0.micup4j.config.CachePolicy`.
+Import `com.swadedev.micup4j.config.CachePolicy`.
 
 | Preset | Guilds per client | Roles per guild | Channels per guild | Members per guild |
 | --- | ---: | ---: | ---: | ---: |
@@ -105,7 +105,7 @@ Role, channel and member events for a guild that is not cached do not insert pla
 ## Permission masks
 
 ```java
-import net.guneyilmaz0.micup4j.permissions.*;
+import com.swadedev.micup4j.permissions.*;
 
 var guild = client.retrieveGuildById("123").complete();
 var member = client.retrieveMemberById("123", "456").complete();

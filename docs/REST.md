@@ -6,7 +6,7 @@ Micup4J has one request scheduler per client. Configuration and counters are pub
 
 ```java
 import java.time.Duration;
-import net.guneyilmaz0.micup4j.config.RestConfig;
+import com.swadedev.micup4j.config.RestConfig;
 
 var policy = RestConfig.defaults()
     .withRequestTimeout(Duration.ofSeconds(15))
