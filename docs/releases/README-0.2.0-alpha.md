@@ -40,7 +40,7 @@ The release adds basic string/integer/boolean/user/channel/role/number options, 
 
 ## Upgrade notes
 
-Use `net.guneyilmaz0.micup4j:Micup4J:0.2.0-alpha` with a sibling source checkout or Maven local. This version is not published to Maven Central.
+Use `com.swadedev.micup4j:Micup4J:0.2.0-alpha` with a sibling source checkout or Maven local. This version is not published to Maven Central.
 
 Default total REST duration is now two minutes. Initial callbacks have a local 2.5-second budget from event construction, including listener queue time. Defer slow interactions immediately. Cancellation cannot undo a write already accepted by the server.
 

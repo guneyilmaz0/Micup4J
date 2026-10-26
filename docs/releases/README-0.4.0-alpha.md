@@ -47,7 +47,7 @@ Compiled examples cover [moderation](../../src/examples/java/com/swadedev/micup4
 
 ## Upgrade notes
 
-Use `net.guneyilmaz0.micup4j:Micup4J:0.4.0-alpha` with a sibling source checkout or Maven local. Custom `MessageChannel` interface implementations must add `sendFiles`. Component and modal interactions now arrive as typed subclasses that still reach `onInteractionCreate`. See the [upgrade guide](../../UPDATE.md).
+Use `com.swadedev.micup4j:Micup4J:0.4.0-alpha` with a sibling source checkout or Maven local. Custom `MessageChannel` interface implementations must add `sendFiles`. Component and modal interactions now arrive as typed subclasses that still reach `onInteractionCreate`. See the [upgrade guide](../../UPDATE.md).
 
 ## Not offered by Micup
 

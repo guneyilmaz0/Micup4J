@@ -50,7 +50,7 @@ For local Maven installation:
 Then use this dependency in a project configured with `mavenLocal()` and `mavenCentral()`:
 
 ```kotlin
-implementation("net.guneyilmaz0.micup4j:Micup4J:0.1.0-alpha")
+implementation("com.swadedev.micup4j:Micup4J:0.1.0-alpha")
 ```
 
 This version is not published to Maven Central. The main JAR is a library, not a standalone bot or a bundle of its dependencies.

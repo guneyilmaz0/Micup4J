@@ -44,7 +44,7 @@ See [PERFORMANCE.md](../PERFORMANCE.md) and the [raw results](../performance/res
 
 ## Upgrade notes
 
-Use `net.guneyilmaz0.micup4j:Micup4J:0.5.0-beta`. There are no breaking API changes. See the [upgrade guide](../../UPDATE.md).
+Use `com.swadedev.micup4j:Micup4J:0.5.0-beta`. There are no breaking API changes. See the [upgrade guide](../../UPDATE.md).
 
 ## Validation
 

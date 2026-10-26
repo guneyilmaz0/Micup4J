@@ -45,7 +45,7 @@ JDA-style listener packages, mutable command definitions with options, subcomman
 
 ## Upgrade notes
 
-Use `net.guneyilmaz0.micup4j:Micup4J:0.3.0-alpha` with a sibling source checkout or Maven local. This version is not published to Maven Central. Several methods now return specialized action subtypes; source assignments to `RestAction` still compile, but consumers must be recompiled. `Status` gained `SHUTTING_DOWN` and `RestConfig` a `shutdownTimeout` component. See the [upgrade guide](../../UPDATE.md) for every change.
+Use `com.swadedev.micup4j:Micup4J:0.3.0-alpha` with a sibling source checkout or Maven local. This version is not published to Maven Central. Several methods now return specialized action subtypes; source assignments to `RestAction` still compile, but consumers must be recompiled. `Status` gained `SHUTTING_DOWN` and `RestConfig` a `shutdownTimeout` component. See the [upgrade guide](../../UPDATE.md) for every change.
 
 ## Validation
 
