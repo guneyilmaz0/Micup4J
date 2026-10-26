@@ -28,6 +28,7 @@ public final class CommandListUpdateAction extends RestAction<List<Command>> {
             if (submitted) throw new IllegalStateException("Command action has already been submitted");
             var next = new ArrayList<>(commands);
             for (var value : values) next.add(value.toJson().deepCopy());
+            if (next.size() > 100) throw new IllegalArgumentException("A command scope supports at most 100 commands");
             var keys = new HashSet<String>();
             for (var value : next) if (!keys.add(value.path("type").asInt() + ":" + value.path("name").asText()))
                 throw new IllegalArgumentException("Command names must be unique within their type");

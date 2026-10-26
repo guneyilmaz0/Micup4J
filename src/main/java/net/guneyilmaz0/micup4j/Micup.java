@@ -371,6 +371,8 @@ public final class Micup implements AutoCloseable {
                 case "MESSAGE_CREATE" -> new net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent(this, sequence, data);
                 case "INTERACTION_CREATE" -> data.path("type").asInt() == 2
                         ? new net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent(this, sequence, data)
+                        : data.path("type").asInt() == 4
+                        ? new net.guneyilmaz0.micup4j.events.interaction.command.CommandAutoCompleteInteractionEvent(this, sequence, data)
                         : new InteractionCreateEvent(this, sequence, data);
                 default -> new GenericEvent(this, type, sequence, data);
             };

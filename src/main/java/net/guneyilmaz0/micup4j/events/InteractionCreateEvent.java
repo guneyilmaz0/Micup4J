@@ -62,9 +62,32 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
     public java.util.List<net.guneyilmaz0.micup4j.interactions.commands.OptionMapping> getOptions() {
         var data = getData().path("data");
         var result = new java.util.ArrayList<net.guneyilmaz0.micup4j.interactions.commands.OptionMapping>();
-        for (var option : data.path("options"))
+        for (var option : selectedOptions())
             result.add(new net.guneyilmaz0.micup4j.interactions.commands.OptionMapping(getMicup(), getGuildId(), option, data.path("resolved")));
         return java.util.List.copyOf(result);
+    }
+    /** Scalar options on the selected subcommand, or the command itself. */
+    protected JsonNode selectedOptions() {
+        JsonNode options = getData().path("data").path("options");
+        for (int depth = 0; depth < 2 && options.isArray() && options.size() == 1; depth++) {
+            int type = options.get(0).path("type").asInt();
+            if (type != 1 && type != 2) break;
+            options = options.get(0).path("options");
+        }
+        return options;
+    }
+    public String getSubcommandGroup() {
+        var first = getData().path("data").path("options").path(0);
+        return first.path("type").asInt() == 2 ? first.path("name").asText() : null;
+    }
+    public String getSubcommandName() {
+        var first = getData().path("data").path("options").path(0);
+        if (first.path("type").asInt() == 2) first = first.path("options").path(0);
+        return first.path("type").asInt() == 1 ? first.path("name").asText() : null;
+    }
+    public String getFullCommandName() {
+        return getName() + (getSubcommandGroup() == null ? "" : " " + getSubcommandGroup())
+                + (getSubcommandName() == null ? "" : " " + getSubcommandName());
     }
     public net.guneyilmaz0.micup4j.interactions.commands.OptionMapping getOption(String name) {
         java.util.Objects.requireNonNull(name);
@@ -91,7 +114,7 @@ public class InteractionCreateEvent extends GenericEvent implements net.guneyilm
     /** Returns a copied raw option value; absent options are represented by an empty Optional. */
     public java.util.Optional<JsonNode> getOptionValue(String name) {
         java.util.Objects.requireNonNull(name);
-        for (JsonNode option : getData().path("data").path("options"))
+        for (JsonNode option : selectedOptions())
             if (name.equals(option.path("name").asText()) && option.has("value")) return java.util.Optional.of(option.get("value").deepCopy());
         return java.util.Optional.empty();
     }

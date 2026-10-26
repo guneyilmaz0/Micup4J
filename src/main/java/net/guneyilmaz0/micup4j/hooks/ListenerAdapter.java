@@ -12,6 +12,10 @@ public abstract class ListenerAdapter implements EventListener {
             onInteractionCreate(slash);
             onSlashCommandInteraction(slash);
         }
+        else if (event instanceof net.guneyilmaz0.micup4j.events.interaction.command.CommandAutoCompleteInteractionEvent autocomplete) {
+            onInteractionCreate(autocomplete);
+            onCommandAutoCompleteInteraction(autocomplete);
+        }
         else if (event instanceof InteractionCreateEvent interaction) onInteractionCreate(interaction);
         else if (event instanceof net.guneyilmaz0.micup4j.events.guild.GenericGuildEvent guild) {
             onGenericGuild(guild);
@@ -28,6 +32,8 @@ public abstract class ListenerAdapter implements EventListener {
     public void onReady(net.guneyilmaz0.micup4j.events.session.ReadyEvent event) { onReady((ReadyEvent) event); }
     public void onMessageReceived(net.guneyilmaz0.micup4j.events.message.MessageReceivedEvent event) { onMessageReceived((MessageReceivedEvent) event); }
     public void onSlashCommandInteraction(net.guneyilmaz0.micup4j.events.interaction.command.SlashCommandInteractionEvent event) {}
+
+    public void onCommandAutoCompleteInteraction(net.guneyilmaz0.micup4j.events.interaction.command.CommandAutoCompleteInteractionEvent event) {}
 
     public void onGenericGuild(net.guneyilmaz0.micup4j.events.guild.GenericGuildEvent event) {}
     public void onGuildReady(net.guneyilmaz0.micup4j.events.guild.GuildReadyEvent event) {}
