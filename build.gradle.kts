@@ -50,6 +50,8 @@ tasks.processResources {
     inputs.property("version", project.version.toString())
     filesMatching("micup4j.properties") { expand("version" to project.version.toString()) }
 }
+// Ship the license inside every JAR, as Maven Central consumers expect.
+tasks.withType<Jar>().configureEach { from(rootProject.file("LICENSE")) { into("META-INF") } }
 tasks.jar {
     manifest.attributes("Implementation-Title" to "Micup4J", "Implementation-Version" to project.version.toString())
 }
@@ -57,10 +59,9 @@ tasks.withType<AbstractArchiveTask>().configureEach {
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
 }
-// Release metadata. The license is the maintainer's choice: pass -PpomLicenseName and -PpomLicenseUrl (or set them in
-// ~/.gradle/gradle.properties); verifyRelease refuses to continue without them.
-val pomLicenseName = providers.gradleProperty("pomLicenseName")
-val pomLicenseUrl = providers.gradleProperty("pomLicenseUrl")
+// Release metadata. Micup4J is licensed under the Apache License 2.0 (see LICENSE).
+val pomLicenseName = "The Apache License, Version 2.0"
+val pomLicenseUrl = "https://www.apache.org/licenses/LICENSE-2.0.txt"
 publishing {
     publications {
         create<MavenPublication>("micup4j") {
@@ -76,8 +77,8 @@ publishing {
                 }
                 developers { developer { id.set("guneyilmaz0"); url.set("https://github.com/guneyilmaz0") } }
                 issueManagement { system.set("GitHub"); url.set("https://github.com/guneyilmaz0/Micup4J/issues") }
-                if (pomLicenseName.isPresent && pomLicenseUrl.isPresent) licenses {
-                    license { name.set(pomLicenseName); url.set(pomLicenseUrl) }
+                licenses {
+                    license { name.set(pomLicenseName); url.set(pomLicenseUrl); distribution.set("repo") }
                 }
             }
         }
@@ -125,12 +126,13 @@ tasks.register("verifyRelease") {
     val version = project.version.toString()
     val changelog = file("CHANGELOG.md")
     val notes = file("docs/releases/README-$version.md")
+    val license = file("LICENSE")
     doLast {
         val problems = mutableListOf<String>()
         if (version.endsWith("SNAPSHOT")) problems += "Version $version is a snapshot"
         if (!changelog.readText().contains("## [$version]")) problems += "CHANGELOG.md has no [$version] section"
         if (!notes.exists()) problems += "Missing release notes ${notes.path}"
-        if (!pomLicenseName.isPresent || !pomLicenseUrl.isPresent) problems += "No license chosen: pass -PpomLicenseName and -PpomLicenseUrl"
+        if (!license.exists()) problems += "Missing LICENSE file"
         check(problems.isEmpty()) { "Release is not ready:\n - " + problems.joinToString("\n - ") }
     }
 }
