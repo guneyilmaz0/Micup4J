@@ -51,7 +51,10 @@ Micup has no Discord intents. Remove Discord intent configuration instead of exp
 | `getTextChannelById(...).sendMessage(...).queue()` | Cached text-channel handle with message operations; null if uncached or not text |
 | `entities.channel.middleman.MessageChannel` | Interface for the supported message-channel operations; legacy handle implements it |
 | `entities.channel.ChannelType.PRIVATE` | Uses Micup channel values; legacy constants remain aliases |
-| `Commands.slash(...).addOption(...)` | Mutable, validated command definition; required options precede optional ones |
+| `Commands.slash(...).addOption(...)`, `OptionData`, subcommands/groups | Mutable definitions with copied children, typed choices and constraints; required options precede optional ones |
+| `onCommandAutoCompleteInteraction`, `getFocusedOption`, `replyChoices` | Typed Gateway autocomplete with a lazy type-8 callback, 25-choice limit and shared acknowledgement/deadline handling |
+| `getFullCommandName`, `getSubcommandGroup/getSubcommandName` | Selected nested command path; `getOption/getOptions` expose its scalar leaf options |
+| `sendMessage/reply(...).setEmbeds(...)`, `editMessage(...).setContent(...)` | Lazy message create/edit action subtypes; setters freeze after first execution |
 | `updateCommands().addCommands(...).queue()` | Lazy typed bulk replacement globally or on a client-bound guild |
 | `guild.upsertCommand`, `retrieveCommands`, `deleteCommandById` | Real command REST operations, returning typed `Command` values |
 | `event.getOption/getOptions` | `OptionMapping` with strings, booleans, numeric conversions and resolved user/member/role/channel access |
@@ -150,7 +153,7 @@ Builder and runtime presence setters now publish the real Micup presence payload
 
 ## Remaining compatibility work
 
-Streaming/rich-presence metadata, member cache flag adapters, advanced entity events and mention types, nested commands/choices/autocomplete, component builders, fluent message creation/edit actions, uploads, complete webhook actions, user DMs and shard managers still need implementation. Discord-only capabilities will not be silently emulated where Micup has no equivalent.
+Streaming/rich-presence metadata, member cache flag adapters, advanced entity events and mention types, component builders, uploads, complete webhook actions, user DMs and shard managers still need implementation. Discord-only capabilities will not be silently emulated where Micup has no equivalent.
 
 There is no promise that replacing imports and the builder is sufficient for every existing bot. The compiled example and integration tests are the current coverage evidence. Extend compatibility with runnable source fixtures as more of the roadmap is implemented.
 
@@ -166,3 +169,5 @@ There is no promise that replacing imports and the builder is sufficient for eve
 - [Micup client commands](https://micup.gg/docs/gateway/commands/)
 - [Micup message mentions](https://micup.gg/docs/http-api/messages/)
 - [JDA guild readiness](https://docs.jda.wiki/net/dv8tion/jda/api/events/guild/GuildReadyEvent.html)
+
+See [advanced commands and fluent messages](COMMANDS.md) and the [compiled toolkit example](../src/examples/java/net/guneyilmaz0/micup4j/examples/CommandToolkitExample.java) for the supported builder chains.

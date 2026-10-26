@@ -6,6 +6,11 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 
 ### Added
 
+- JDA-style `OptionData`, `SubcommandData`, and `SubcommandGroupData`, with copied children, choice typing, numeric/string/channel constraints, sibling limits, and atomic validation.
+- Nested command paths and leaf option access, typed `CommandAutoCompleteInteractionEvent`/`AutoCompleteQuery`, and lazy type-8 callbacks with shared deadlines and acknowledgement protection.
+- Fluent `MessageCreateAction`/`MessageEditAction` content and embed setters, preserving reply references and guild context. Payloads freeze on first execution; partial edits retain omitted fields.
+- A compiled command toolkit example and expanded Java/Kotlin compatibility fixtures.
+
 - Immutable guild, member, role, typed guild-channel and permission-overwrite snapshots.
 - Typed HTTP reads and basic guild naming, member nickname, role creation/renaming and role-assignment actions.
 - Bounded member pages with explicit limits, unsigned ascending cursors and response validation.
@@ -26,6 +31,8 @@ User-visible changes are recorded here. Versions before `1.0.0` may introduce br
 - A compiled BMO-style avatar fixture, local embed verification, and lifecycle/presence/mention regression tests.
 
 ### Changed
+
+- Message channel send methods and message reply/edit methods now return specialized `RestAction<Message>` subtypes. Source assignments to `RestAction<Message>` remain valid; recompile consumers because JVM method descriptors changed.
 
 - In this checkout, `createDefault` now caches bounded entity state; `createLight` retains none. Enabled caches reject ignored state events at build time.
 - Cache updates precede the matching event's listeners. HTTP responses remain detached to avoid overwriting newer Gateway state.

@@ -4,6 +4,8 @@
 
 The checkout now targets JDA-style source usage. This is not a new prepared release; the release version below remains unchanged. Review the [compatibility guide](docs/JDA-COMPATIBILITY.md) before updating an existing alpha consumer:
 
+- Message send/reply/edit methods now return fluent action subtypes. Recompile consumers; existing `RestAction<Message>` source assignments remain valid.
+- Advanced commands use `OptionData`, `SubcommandData` and `SubcommandGroupData`; see the [command toolkit guide](docs/COMMANDS.md) for autocomplete and message chains.
 - Cache getters return objects or null; move Optional access to `find...ById`.
 - Reply/defer actions complete with `InteractionHook`; update explicitly typed `RestAction<Void>` usages.
 - Import canonical channel types from `entities.channel.ChannelType`.

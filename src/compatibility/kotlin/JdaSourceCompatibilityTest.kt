@@ -10,6 +10,9 @@ import net.guneyilmaz0.micup4j.events.guild.GuildReadyEvent
 import net.guneyilmaz0.micup4j.hooks.ListenerAdapter
 import net.guneyilmaz0.micup4j.interactions.commands.OptionType
 import net.guneyilmaz0.micup4j.interactions.commands.build.Commands
+import net.guneyilmaz0.micup4j.interactions.commands.build.OptionData
+import net.guneyilmaz0.micup4j.interactions.commands.build.SubcommandData
+import net.guneyilmaz0.micup4j.events.interaction.command.CommandAutoCompleteInteractionEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -34,6 +37,22 @@ class JdaSourceCompatibilityTest : ListenerAdapter() {
     private fun register(guild: Guild) {
         guild.upsertCommand(Commands.slash("avatar", "Show a user's avatar")
             .addOption(OptionType.USER, "user", "Choose a user", false)).queue()
+    }
+
+    override fun onCommandAutoCompleteInteraction(event: CommandAutoCompleteInteractionEvent) {
+        if (event.fullCommandName == "help find" && event.focusedOption.name == "topic") {
+            event.replyChoiceStrings("commands", "permissions").queue()
+        }
+    }
+
+    @Suppress("unused")
+    private fun commandToolkit(guild: Guild, message: Message) {
+        guild.upsertCommand(Commands.slash("help", "Help topics")
+            .addSubcommands(SubcommandData("find", "Find topic")
+                .addOptions(OptionData(OptionType.STRING, "topic", "Topic", true, true)
+                    .setMinLength(1).setMaxLength(100)))).queue()
+        message.reply("Help").setEmbeds(EmbedBuilder().setTitle("Topics").build()).queue()
+        message.editMessage("Updated").setEmbeds().queue()
     }
 
     @Suppress("unused")

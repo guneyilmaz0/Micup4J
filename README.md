@@ -12,7 +12,7 @@ Micup4J provides a familiar builder, event listener, and REST action API inspire
 
 ## Unreleased development
 
-The current source checkout also includes the first `0.3.0-alpha` milestone work: typed guild/member/role/channel reads, basic management actions, bounded member pagination, configurable entity caches and permission calculations. These additions are not in the previously prepared `0.2.0-alpha` release. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
+The current source checkout also includes the first `0.3.0-alpha` milestone work: typed guild/member/role/channel reads, basic management actions, bounded member pagination, configurable entity caches and permission calculations. These additions are not in the previously prepared `0.2.0-alpha` release. It also adds JDA-style listener packages, mutable command definitions, typed slash options, fluent ephemeral callbacks, interaction hooks, active mentions, guild lifecycle callbacks and coalesced presence controls. The source also includes advanced command options, subcommands/groups, typed autocomplete callbacks, and fluent message create/edit actions. See the [JDA migration guide](docs/JDA-COMPATIBILITY.md), [compiled example](src/examples/java/net/guneyilmaz0/micup4j/examples/JdaStyleBot.java), [entity API guide](docs/ENTITIES.md), and [presence guide](docs/PRESENCE.md).
 
 ## Supported features
 
@@ -206,7 +206,7 @@ Import `net.guneyilmaz0.micup4j.events.InteractionCreateEvent` for this handler.
 
 For longer work, submit `deferReply(true)` first and chain `editOriginal(...)` after it completes. Micup requires the initial response within **3 seconds** and permits later edits and followups within **15 minutes**. Those deadlines are enforced by the server. See [Interactions](https://micup.gg/docs/http-api/interactions/).
 
-`respond(type, JsonNode)` exposes supported callback shapes for component updates, autocomplete, and modals. Typed component builders, subcommands, choices, and advanced option constraints remain planned. Basic typed value options and rich embed builders are available.
+`respond(type, JsonNode)` exposes supported callback shapes for component updates, autocomplete, and modals. Typed component builders remain planned. The unreleased source supports `OptionData` constraints and choices, subcommands/groups, typed autocomplete callbacks, and fluent message creation/editing; see the [command toolkit guide](docs/COMMANDS.md).
 
 ## Embeds and typed options
 
@@ -261,7 +261,7 @@ If the event queue fills, the client fails instead of silently acknowledging a d
 Not yet included:
 
 - Complete entity managers, indexed member queries, Gateway member requests, and advanced mutation helpers. Basic caches and permission resolution are available in the unreleased source checkout.
-- Typed component builders, attachment uploads, subcommands, choices, and advanced command option constraints.
+- Typed component builders, attachment uploads, and complete webhook/followup action builders. Advanced command options and autocomplete are available in the unreleased source.
 - Automatic shard orchestration or distributed rate limit coordination.
 - Voice connections, audio playback, or music support.
 - A measured JDA performance comparison.
