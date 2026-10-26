@@ -35,8 +35,9 @@ public record Member(String guildId, User user, String nickname, List<String> ro
         }
         return roles.stream().sorted(Role.HIERARCHY).toList();
     }
-    public java.awt.Color getColor() { int raw = getColorRaw(); return raw == 0 ? null : new java.awt.Color(raw); }
-    public int getColorRaw() { return getRoles().stream().filter(r -> r.color() != 0).findFirst().map(Role::color).orElse(0); }
+    public RoleColors getColors() { return getRoles().stream().map(Role::getColors).filter(c -> !c.isDefault()).findFirst().orElse(RoleColors.DEFAULT); }
+    public java.awt.Color getColor() { return getColors().getPrimary(); }
+    public int getColorRaw() { return getColors().getPrimaryRaw(); }
     public boolean hasPermission(net.guneyilmaz0.micup4j.Permission... permissions) {
         var mask = net.guneyilmaz0.micup4j.permissions.PermissionResolver.guildPermissions(getGuild(), this);
         return Arrays.stream(permissions).allMatch(p -> mask.contains(p.toMicupPermission()));

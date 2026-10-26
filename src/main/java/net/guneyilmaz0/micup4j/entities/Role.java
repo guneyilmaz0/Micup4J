@@ -9,10 +9,14 @@ import java.util.Objects;
 
 /** Immutable role snapshot; hierarchy order is highest first, then lower snowflake first. */
 public record Role(String guildId, String id, String name, int color, int position,
-                   PermissionSet permissions, boolean hoist, boolean mentionable) implements ISnowflake {
+                   PermissionSet permissions, boolean hoist, boolean mentionable, Integer secondaryColor) implements ISnowflake {
+    public Role(String guildId, String id, String name, int color, int position, PermissionSet permissions, boolean hoist, boolean mentionable) {
+        this(guildId, id, name, color, position, permissions, hoist, mentionable, null);
+    }
+    public RoleColors getColors() { return new RoleColors(color, secondaryColor); }
     public static final Comparator<Role> HIERARCHY = Comparator.comparingInt(Role::position).reversed()
             .thenComparing(role -> new BigInteger(role.id()));
-    public Role { Json.id(guildId); Json.id(id); Objects.requireNonNull(name); Objects.requireNonNull(permissions); }
+    public Role { Json.id(guildId); Json.id(id); Objects.requireNonNull(name); Objects.requireNonNull(permissions); new RoleColors(color, secondaryColor); }
     @Override public String getId() { return id; }
     public String getName() { return name; }
     public int getColorRaw() { return color; }
@@ -30,6 +34,7 @@ public record Role(String guildId, String id, String name, int color, int positi
     public static Role fromJson(String guildId, JsonNode data) {
         return new Role(guildId, data.path("id").asText(), data.path("name").asText(), data.path("color").asInt(),
                 data.path("position").asInt(), PermissionSet.parse(data.path("permissions").asText()),
-                data.path("hoist").asBoolean(), data.path("mentionable").asBoolean());
+                data.path("hoist").asBoolean(), data.path("mentionable").asBoolean(),
+                data.hasNonNull("color_secondary") ? data.path("color_secondary").asInt() : null);
     }
 }

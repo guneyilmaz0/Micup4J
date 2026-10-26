@@ -26,7 +26,7 @@ public class MessageReceivedEvent extends GenericEvent {
     public Guild getGuild() { return message.getGuild(); }
     public Member getMember() { return message.getMember(); }
     public net.guneyilmaz0.micup4j.entities.channel.ChannelType getChannelType() {
-        return isFromGuild() ? getChannel().getType() : net.guneyilmaz0.micup4j.entities.channel.ChannelType.PRIVATE;
+        return getChannel().getType();
     }
     public boolean isFromType(net.guneyilmaz0.micup4j.entities.channel.ChannelType type) { return getChannelType() == type; }
 
